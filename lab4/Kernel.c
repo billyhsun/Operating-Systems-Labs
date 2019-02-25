@@ -706,10 +706,10 @@ code Kernel
 
 	  -- Initialize thread table
           for i = 0 to MAX_NUMBER_OF_PROCESSES-1 by 1
-			threadTable[i].Init("name")
-            threadTable[i].status = UNUSED
-		  	freeList.AddToEnd(&threadTable[i])
-	      endFor		  
+		threadTable[i].Init("name")
+          	threadTable[i].status = UNUSED
+		freeList.AddToEnd(&threadTable[i])
+	  endFor		  
 
         endMethod
 
@@ -765,9 +765,9 @@ code Kernel
         -- 
         threadManagerLock.Lock()
         (*th).status = UNUSED
-		freeList.AddToEnd(th)
-		threadBecameFree.Signal(&threadManagerLock)
-		threadManagerLock.Unlock()
+	freeList.AddToEnd(th)
+	threadBecameFree.Signal(&threadManagerLock)
+	threadManagerLock.Unlock()
         endMethod
 
     endBehavior
@@ -936,7 +936,7 @@ code Kernel
           processBecameFree.Wait(&processManagerLock)
         endWhile
         processPtr = freeList.Remove()
-        processPtr.pid = nextPid
+        (*processPtr).pid = nextPid
         nextPid = nextPid + 1
         (*processPtr).status = ACTIVE
         processManagerLock.Unlock()
@@ -952,9 +952,9 @@ code Kernel
         --
         processManagerLock.Lock()
         (*p).status = FREE
-		freeList.AddToEnd(p)
-		processBecameFree.Signal(&processManagerLock)
-		processManagerLock.Unlock()
+	freeList.AddToEnd(p)
+	processBecameFree.Signal(&processManagerLock)
+	processManagerLock.Unlock()
         endMethod
 
 
@@ -1063,9 +1063,9 @@ code Kernel
 
       method GetNewFrames (aPageTable: ptr to AddrSpace, numFramesNeeded: int)
         var 
-			i: int
-			f: int
-			frameAddr: int
+		i: int
+		f: int
+		frameAddress: int
 
         frameManagerLock.Lock()
         while numberFreeFrames < numFramesNeeded
@@ -1073,28 +1073,29 @@ code Kernel
         endWhile
         for i = 0 to numFramesNeeded - 1
           f = framesInUse.FindZeroAndSet ()
-          frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (f * PAGE_SIZE)
-          aPageTable.SetFrameAddr(i, frameAddr)
+          frameAddress = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (f * PAGE_SIZE)
+          (*aPageTable).SetFrameAddr(i, frameAddress)
         endFor
         numberFreeFrames = numberFreeFrames - numFramesNeeded
-		aPageTable.numberOfPages = numFramesNeeded
-		frameManagerLock.Unlock()
+	(*aPageTable).numberOfPages = numFramesNeeded
+	frameManagerLock.Unlock()
         endMethod
 
       ----------  FrameManager . ReturnAllFrames  ----------
 
       method ReturnAllFrames (aPageTable: ptr to AddrSpace)
         var
-          i:int
-          bitIndex: int
-          frameAddr: int
+        	i: int
+        	bitIndex: int
+        	frameAddress: int
+
         frameManagerLock.Lock()
-        for i = 0 to aPageTable.numberOfPages - 1
-          frameAddr = aPageTable.ExtractFrameAddr(i)
-          bitIndex = (frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE
+        for i = 0 to (*aPageTable).numberOfPages - 1
+          frameAddress = (*aPageTable).ExtractFrameAddr(i)
+          bitIndex = (frameAddress - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE
           framesInUse.ClearBit(bitIndex)
         endFor
-        numberFreeFrames = numberFreeFrames + aPageTable.numberOfPages
+        numberFreeFrames = numberFreeFrames + (*aPageTable).numberOfPages
         newFramesAvailable.Broadcast(&frameManagerLock)
         frameManagerLock.Unlock()
         endMethod
