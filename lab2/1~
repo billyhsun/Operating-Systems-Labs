@@ -1,0 +1,5 @@
+export PATH=$PATH:/share/copy/ece353s/blitz/bin/
+
+make
+
+blitz -g os
