@@ -7,19 +7,39 @@ code Kernel
 -----------------------------  InitFirstProcess  ---------------------------------
 
 	function InitFirstProcess ()
+		var
+				newThread: ptr to Thread
 
-
-
+		newThread = threadManager.GetANewThread()	
+		(*newThread).Init("User Program")
+		(*newThread).Fork(StartUserProcess, 0)
 
 	endFunction
-
 
 -----------------------------  StartUserProcess  ---------------------------------
 
 	function StartUserProcess ()
+    var
+      entryPoint: int
+      pcb: ptr to ProcessControlBlock
+      junk: int
+      initUserStack: int
+      initSystemStack: int
+      openFilePtr: ptr to OpenFile
 
-
-
+    pcb = processManager.GetANewProcess()
+    pcb.myThread = currentThread
+    currentThread.myProcess = pcb
+    openFilePtr = fileManager.Open("TestProgram1")
+    entryPoint = (*openFilePtr).LoadExecutable(&(pcb.addrSpace))
+    fileManager.Close(openFilePtr)
+    initUserStack = pcb.addrSpace.numberOfPages*PAGE_SIZE
+    initSystemStack = (&currentThread.systemStack[SYSTEM_STACK_SIZE-1]) asInteger
+    junk = SetInterruptsTo(DISABLED)
+    pcb.addrSpace.SetToThisPageTable()
+    currentThread.isUserThread = true
+    print("Becoming User Thread")
+    BecomeUserThread(initUserStack, entryPoint, initSystemStack)
 
 	endFunction
 
@@ -1706,81 +1726,191 @@ code Kernel
 -----------------------------  Handle_Sys_Exit  ---------------------------------
 
   function Handle_Sys_Exit (returnStatus: int)
-      -- NOT IMPLEMENTED
+      print("Handle_Sys_Exit invoked by a user thread!")
+      nl()
+      print("returnStatus = ")
+      printInt(returnStatus)
+      nl()
     endFunction
 
 -----------------------------  Handle_Sys_Shutdown  ---------------------------------
 
   function Handle_Sys_Shutdown ()
-      -- NOT IMPLEMENTED
+      FatalError("Syscall 'Shutdown' was invoked by a user thread")
     endFunction
 
 -----------------------------  Handle_Sys_Yield  ---------------------------------
 
   function Handle_Sys_Yield ()
-      -- NOT IMPLEMENTED
+      print("Handle_Sys_Yield invoked by a user thread!")
+      nl() 
     endFunction
 
 -----------------------------  Handle_Sys_Fork  ---------------------------------
 
   function Handle_Sys_Fork () returns int
-      -- NOT IMPLEMENTED
-      return 0
+      print("Handle_Sys_Fork invoked by a user thread!")
+      nl()
+      return 1000
     endFunction
 
 -----------------------------  Handle_Sys_Join  ---------------------------------
 
   function Handle_Sys_Join (processID: int) returns int
-      -- NOT IMPLEMENTED
-      return 0
+      print("Handle_Sys_Join invoked by a user thread!")
+      nl()
+      print("processID = ")
+      printInt(processID)
+      nl()
+      return 2000
     endFunction
 
 -----------------------------  Handle_Sys_Exec  ---------------------------------
 
   function Handle_Sys_Exec (filename: ptr to array of char) returns int
-      -- NOT IMPLEMENTED
-      return 0
+			var
+        entryPoint: int
+				newAddrSpace: AddrSpace = new AddrSpace
+				initUserStack: int
+				initSystemStack: int
+				kFileName: array [MAX_STRING_SIZE] of char
+				openFilePtr: ptr to OpenFile
+				t: int
+
+			t = SetInterruptsTo (DISABLED)
+			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kFileName, filename asInteger, MAX_STRING_SIZE) 
+
+			if t < 0
+				return -1
+			endIf
+			newAddrSpace.Init()
+			openFilePtr = fileManager.Open(&kFileName)
+			if openFilePtr == null
+				return -1
+			endIf
+			entryPoint = openFilePtr.LoadExecutable(&newAddrSpace)
+			if entryPoint < 0
+				return -1
+			endIf
+			frameManager.ReturnAllFrames(&((*currentThread).myProcess.addrSpace))
+			currentThread.myProcess.addrSpace = newAddrSpace
+			fileManager.Close(openFilePtr)
+			(*currentThread).isUserThread = true
+			initUserStack = newAddrSpace.numberOfPages*PAGE_SIZE 
+			initSystemStack = (& currentThread.systemStack[SYSTEM_STACK_SIZE-1]) asInteger
+			newAddrSpace.SetToThisPageTable()
+			BecomeUserThread(initUserStack, entryPoint, initSystemStack)
+			return 3000
     endFunction
 
 -----------------------------  Handle_Sys_Create  ---------------------------------
 
   function Handle_Sys_Create (filename: ptr to array of char) returns int
-      -- NOT IMPLEMENTED
-      return 0
+			var
+					t: int
+					kFileName: array [MAX_STRING_SIZE] of char
+
+			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kFileName, filename asInteger, MAX_STRING_SIZE) 
+
+			print("Handle_Sys_Create invoked by a user thread!")
+			nl()
+			print("virt addr of filename = ")
+			printHex(filename asInteger)
+			nl()
+			print("filename = ")
+			print(&kFileName)
+			nl()
+      return 4000
     endFunction
 
 -----------------------------  Handle_Sys_Open  ---------------------------------
 
   function Handle_Sys_Open (filename: ptr to array of char) returns int
-      -- NOT IMPLEMENTED
-      return 0
+			var
+					t: int
+					kfileName: array [MAX_STRING_SIZE] of char
+
+			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kfileName, filename asInteger, MAX_STRING_SIZE) 
+
+			print("Handle_Sys_Open invoked by a user thread!")
+			nl()
+			print("virt addr of filename = ")
+			printHex(filename asInteger)
+			nl()
+			print("filename = ")
+			print(&kfileName)
+			nl()
+			return 5000
     endFunction
 
 -----------------------------  Handle_Sys_Read  ---------------------------------
 
   function Handle_Sys_Read (fileDesc: int, buffer: ptr to char, sizeInBytes: int) returns int
-      -- NOT IMPLEMENTED
-      return 0
+			var
+					t: int
+					kBuffer: array [MAX_STRING_SIZE] of char
+
+			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kBuffer, buffer asInteger, MAX_STRING_SIZE)
+
+			print("Handle_Sys_Read invoked by a user thread!")
+			nl()
+			print("fileDesc = ")
+			printInt(fileDesc)
+			nl()
+			print("virt addr of buffer = ")
+			printHex(buffer asInteger)
+			nl()
+			print("sizeInBytes = ")
+			printInt(sizeInBytes)
+			nl()
+			return 6000
     endFunction
 
 -----------------------------  Handle_Sys_Write  ---------------------------------
 
   function Handle_Sys_Write (fileDesc: int, buffer: ptr to char, sizeInBytes: int) returns int
-      -- NOT IMPLEMENTED
-      return 0
+			var
+					t: int
+					kBuffer: array [MAX_STRING_SIZE] of char
+
+			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kBuffer, buffer asInteger, MAX_STRING_SIZE)
+
+			print("Handle_Sys_Write invoked by a user thread!")
+			nl()
+			print("fileDesc = ")
+			printInt(fileDesc)
+			nl()
+			print("virt addr of buffer = ")
+			printHex(buffer asInteger)
+			nl()
+			print("sizeInBytes = ")
+			printInt(sizeInBytes)
+			nl()
+			return 7000
     endFunction
 
 -----------------------------  Handle_Sys_Seek  ---------------------------------
 
   function Handle_Sys_Seek (fileDesc: int, newCurrentPos: int) returns int
-      -- NOT IMPLEMENTED
-      return 0
+			print("Handle_Sys_Seek invoked by a user thread!")
+			nl()
+			print("fileDesc = ")
+			printInt(fileDesc)
+			nl()
+			print("newCurrentPos = ")
+			printInt(newCurrentPos)
+			nl()
+			return 8000
     endFunction
 
 -----------------------------  Handle_Sys_Close  ---------------------------------
 
   function Handle_Sys_Close (fileDesc: int)
-      -- NOT IMPLEMENTED
+      print("Handle_Sys_Close invoked by a user thread!")
+			nl()
+			print("fileDesc = ")
+			printInt(fileDesc)
+			nl()
     endFunction
 
 -----------------------------  DiskDriver  ---------------------------------
