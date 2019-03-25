@@ -20,12 +20,12 @@ code Kernel
 
 	function StartUserProcess ()
     var
-      entryPoint: int
-      pcb: ptr to ProcessControlBlock
-      junk: int
-      initUserStack: int
-      initSystemStack: int
-      openFilePtr: ptr to OpenFile
+      	entryPoint: int
+      	pcb: ptr to ProcessControlBlock
+      	junk: int
+      	initUserStack: int
+      	initSystemStack: int
+      	openFilePtr: ptr to OpenFile
 
     pcb = processManager.GetANewProcess()
     pcb.myThread = currentThread
@@ -1726,7 +1726,7 @@ code Kernel
 -----------------------------  Handle_Sys_Exit  ---------------------------------
 
   function Handle_Sys_Exit (returnStatus: int)
-      print("Handle_Sys_Exit invoked by a user thread!")
+      print("Handle_Sys_Exit invoked!")
       nl()
       print("returnStatus = ")
       printInt(returnStatus)
@@ -1742,14 +1742,14 @@ code Kernel
 -----------------------------  Handle_Sys_Yield  ---------------------------------
 
   function Handle_Sys_Yield ()
-      print("Handle_Sys_Yield invoked by a user thread!")
+      print("Handle_Sys_Yield invoked!")
       nl() 
     endFunction
 
 -----------------------------  Handle_Sys_Fork  ---------------------------------
 
   function Handle_Sys_Fork () returns int
-      print("Handle_Sys_Fork invoked by a user thread!")
+      print("Handle_Sys_Fork invoked!")
       nl()
       return 1000
     endFunction
@@ -1757,7 +1757,7 @@ code Kernel
 -----------------------------  Handle_Sys_Join  ---------------------------------
 
   function Handle_Sys_Join (processID: int) returns int
-      print("Handle_Sys_Join invoked by a user thread!")
+      print("Handle_Sys_Join invoked!")
       nl()
       print("processID = ")
       printInt(processID)
@@ -1812,7 +1812,7 @@ code Kernel
 
 			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kFileName, filename asInteger, MAX_STRING_SIZE) 
 
-			print("Handle_Sys_Create invoked by a user thread!")
+			print("Handle_Sys_Create invoked!")
 			nl()
 			print("virt addr of filename = ")
 			printHex(filename asInteger)
@@ -1832,7 +1832,7 @@ code Kernel
 
 			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kfileName, filename asInteger, MAX_STRING_SIZE) 
 
-			print("Handle_Sys_Open invoked by a user thread!")
+			print("Handle_Sys_Open invoked!")
 			nl()
 			print("virt addr of filename = ")
 			printHex(filename asInteger)
@@ -1852,7 +1852,7 @@ code Kernel
 
 			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kBuffer, buffer asInteger, MAX_STRING_SIZE)
 
-			print("Handle_Sys_Read invoked by a user thread!")
+			print("Handle_Sys_Read invoked!")
 			nl()
 			print("fileDesc = ")
 			printInt(fileDesc)
@@ -1875,7 +1875,7 @@ code Kernel
 
 			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kBuffer, buffer asInteger, MAX_STRING_SIZE)
 
-			print("Handle_Sys_Write invoked by a user thread!")
+			print("Handle_Sys_Write invoked!")
 			nl()
 			print("fileDesc = ")
 			printInt(fileDesc)
@@ -1892,7 +1892,7 @@ code Kernel
 -----------------------------  Handle_Sys_Seek  ---------------------------------
 
   function Handle_Sys_Seek (fileDesc: int, newCurrentPos: int) returns int
-			print("Handle_Sys_Seek invoked by a user thread!")
+			print("Handle_Sys_Seek invoked!")
 			nl()
 			print("fileDesc = ")
 			printInt(fileDesc)
@@ -1906,7 +1906,7 @@ code Kernel
 -----------------------------  Handle_Sys_Close  ---------------------------------
 
   function Handle_Sys_Close (fileDesc: int)
-      print("Handle_Sys_Close invoked by a user thread!")
+      print("Handle_Sys_Close invoked!")
 			nl()
 			print("fileDesc = ")
 			printInt(fileDesc)

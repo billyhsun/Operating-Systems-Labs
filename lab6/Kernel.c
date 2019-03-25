@@ -12,7 +12,9 @@ code Kernel
 
 		newThread = threadManager.GetANewThread()	
 		(*newThread).Init("User Program")
-		(*newThread).Fork(StartUserProcess, 0)
+		--(*newThread).Fork(StartUserProcess, "TestProgram1" asInteger)
+		(*newThread).Fork(StartUserProcess, "TestProgram3" asInteger)
+
 
 	endFunction
 
@@ -30,7 +32,7 @@ code Kernel
     pcb = processManager.GetANewProcess()
     pcb.myThread = currentThread
     currentThread.myProcess = pcb
-    openFilePtr = fileManager.Open("TestProgram1")
+    openFilePtr = fileManager.Open("TestProgram3")
     entryPoint = (*openFilePtr).LoadExecutable(&(pcb.addrSpace))
     fileManager.Close(openFilePtr)
     initUserStack = pcb.addrSpace.numberOfPages*PAGE_SIZE
@@ -42,6 +44,7 @@ code Kernel
     BecomeUserThread(initUserStack, entryPoint, initSystemStack)
 
 	endFunction
+
 
 -----------------------------  InitializeScheduler  ---------------------------------
 
@@ -262,7 +265,7 @@ code Kernel
     --         Up().  If initialized with i, then it is as if i Up()
     --         operations have been performed already.
     --
-    -- NOTE: The user should never look at a semaphore's count since the value
+    -- NOTE: The user should never look at a semaphores count since the value
     -- retrieved may be out-of-date, due to other threads performing Up() or
     -- Down() operations since the retrieval of the count.
 
@@ -730,37 +733,31 @@ code Kernel
         --
         -- This method is called once at kernel startup time to initialize
         -- the one and only "ThreadManager" object.
-        -- 
-          var 
-		i: int
-
-          print ("Initializing Thread Manager...\n")
-          
+        --
+        --  print ("Initializing Thread Manager...\n")
+          var
+				      i: int
           threadTable = new array of Thread {MAX_NUMBER_OF_PROCESSES of new Thread}
           freeList = new List[Thread]
-
           threadManagerLock = new Mutex
-          threadBecameFree = new Condition
+          aThreadBecameFree = new Condition
           threadManagerLock.Init()
-          threadBecameFree.Init()
-
-	  -- Initialize thread table
+          aThreadBecameFree.Init()
           for i = 0 to MAX_NUMBER_OF_PROCESSES-1 by 1
-		threadTable[i].Init("name")
-          	threadTable[i].status = UNUSED
-		freeList.AddToEnd(&threadTable[i])
-	  endFor		  
-
+					     threadTable[i].Init("name")
+               threadTable[i].status = UNUSED
+							 freeList.AddToEnd(&threadTable[i])
+					endFor
         endMethod
 
       ----------  ThreadManager . Print  ----------
 
       method Print ()
-        -- 
+        --
         -- Print each thread.  Since we look at the freeList, this
         -- routine disables interrupts so the printout will be a
         -- consistent snapshot of things.
-        -- 
+        --
         var i, oldStatus: int
           oldStatus = SetInterruptsTo (DISABLED)
           print ("Here is the thread table...\n")
@@ -779,36 +776,35 @@ code Kernel
       ----------  ThreadManager . GetANewThread  ----------
 
       method GetANewThread () returns ptr to Thread
-        -- 
+        --
         -- This method returns a new Thread; it will wait
         -- until one is available.
-        -- 
+        --
         var
           threadPtr: ptr to Thread
-
         threadManagerLock.Lock()
         while freeList.IsEmpty()
-          threadBecameFree.Wait(&threadManagerLock)
+          aThreadBecameFree.Wait(&threadManagerLock)
         endWhile
         threadPtr = freeList.Remove()
         (*threadPtr).status = JUST_CREATED
         threadManagerLock.Unlock()
         return threadPtr
-        endMethod
+      endMethod
 
       ----------  ThreadManager . FreeThread  ----------
 
       method FreeThread (th: ptr to Thread)
-        -- 
+        --
         -- This method is passed a ptr to a Thread;  It moves it
         -- to the FREE list.
-        -- 
+        --
         threadManagerLock.Lock()
         (*th).status = UNUSED
-	freeList.AddToEnd(th)
-	threadBecameFree.Signal(&threadManagerLock)
-	threadManagerLock.Unlock()
-        endMethod
+				freeList.AddToEnd(th)
+				aThreadBecameFree.Signal(&threadManagerLock)
+				threadManagerLock.Unlock()
+      endMethod
 
     endBehavior
 
@@ -893,37 +889,33 @@ code Kernel
       method Init ()
         --
         -- This method is called once at kernel startup time to initialize
-        -- the one and only "processManager" object.  
+        -- the one and only "processManager" object.
         --
-        var
-		i: int
-
+        var i: int
+        processManagerLock = new Mutex
+        aProcessBecameFree = new Condition
+        aProcessDied = new Condition
         processTable = new array of ProcessControlBlock {MAX_NUMBER_OF_PROCESSES of new ProcessControlBlock}
         freeList = new List[ProcessControlBlock]
-
-        processManagerLock = new Mutex
-        processBecameFree = new Condition
-        processDied = new Condition
-
         processManagerLock.Init()
-        processBecameFree.Init()
-        processDied.Init()
-
+        aProcessBecameFree.Init()
+        aProcessDied.Init()
         for i = 0 to MAX_NUMBER_OF_PROCESSES-1 by 1
              processTable[i].Init()
              processTable[i].status = FREE
              freeList.AddToEnd(&processTable[i])
         endFor
+        nextPid = 1
         endMethod
 
       ----------  ProcessManager . Print  ----------
 
       method Print ()
-        -- 
+        --
         -- Print all processes.  Since we look at the freeList, this
         -- routine disables interrupts so the printout will be a
         -- consistent snapshot of things.
-        -- 
+        --
         var i, oldStatus: int
           oldStatus = SetInterruptsTo (DISABLED)
           print ("Here is the process table...\n")
@@ -942,11 +934,11 @@ code Kernel
       ----------  ProcessManager . PrintShort  ----------
 
       method PrintShort ()
-        -- 
+        --
         -- Print all processes.  Since we look at the freeList, this
         -- routine disables interrupts so the printout will be a
         -- consistent snapshot of things.
-        -- 
+        --
         var i, oldStatus: int
           oldStatus = SetInterruptsTo (DISABLED)
           print ("Here is the process table...\n")
@@ -970,18 +962,17 @@ code Kernel
         --
         var
           processPtr: ptr to ProcessControlBlock
-
         processManagerLock.Lock()
-        while freeList.IsEmpty()
-          processBecameFree.Wait(&processManagerLock)
+        while(freeList.IsEmpty())
+          aProcessBecameFree.Wait(&processManagerLock)
         endWhile
         processPtr = freeList.Remove()
-        (*processPtr).pid = nextPid
+        processPtr.pid = nextPid
         nextPid = nextPid + 1
-        (*processPtr).status = ACTIVE
+        processPtr.status = ACTIVE
         processManagerLock.Unlock()
         return processPtr
-        endMethod
+      endMethod
 
       ----------  ProcessManager . FreeProcess  ----------
 
@@ -990,15 +981,70 @@ code Kernel
         -- This method is passed a ptr to a Process;  It moves it
         -- to the FREE list.
         --
+        FatalError("should never be called")
         processManagerLock.Lock()
-        (*p).status = FREE
-	freeList.AddToEnd(p)
-	processBecameFree.Signal(&processManagerLock)
-	processManagerLock.Unlock()
-        endMethod
+        p.status = FREE
+        freeList.AddToEnd(p)
+        aProcessBecameFree.Signal(&processManagerLock)
+        processManagerLock.Unlock()
+      endMethod
+
+      ----------  ProcessManager . TurnIntoZombie  -----------
+
+      method TurnIntoZombie (PCB: ptr to ProcessControlBlock)
+		var
+			i: int
+	
+		processManagerLock.Lock()
+
+		for i = 0 to (MAX_NUMBER_OF_PROCESSES - 1)
+			if processTable[i].parentsPid == PCB.pid && processTable[i].status == ZOMBIE
+				processTable[i].status = FREE
+				freeList.AddToEnd(& processTable[i])
+				aProcessBecameFree.Signal(& processManagerLock)
+			endIf
+		endFor
+
+		for i = 0 to (MAX_NUMBER_OF_PROCESSES - 1)
+			if processTable[i].pid == PCB.parentsPid && processTable[i].status == ACTIVE
+				PCB.status = ZOMBIE
+				aProcessDied.Broadcast(& processManagerLock)
+				processManagerLock.Unlock()
+				return
+			endIf
+		endFor
+
+		PCB.status = FREE
+		freeList.AddToEnd(PCB)
+		aProcessBecameFree.Signal(& processManagerLock)
+
+		processManagerLock.Unlock()
+
+	  endMethod
 
 
-    endBehavior
+      ----------  ProcessManager . WaitForZombie  -----------
+
+      method WaitForZombie (PCB: ptr to ProcessControlBlock) returns int
+		var
+			exit_status: int
+	
+		processManagerLock.Lock()
+		
+		while PCB.status != ZOMBIE
+			aProcessDied.Wait(& processManagerLock)
+		endWhile
+		exit_status = PCB.exitStatus
+		PCB.status = FREE
+		freeList.AddToEnd(PCB)
+		aProcessBecameFree.Signal(& processManagerLock)
+
+		processManagerLock.Unlock()
+		
+		return exit_status		
+	
+	  endMethod
+endBehavior
 
 -----------------------------  PrintObjectAddr  ---------------------------------
 
@@ -1018,7 +1064,19 @@ code Kernel
     -- free the resources held by this process and will terminate the
     -- current thread.
     --
-      FatalError ("ProcessFinish is not implemented")
+		var
+			oldIntStatus: int
+
+		currentThread.myProcess.exitStatus = exitStatus
+		oldIntStatus = SetInterruptsTo (DISABLED)
+		currentThread.isUserThread = false
+		oldIntStatus = SetInterruptsTo (oldIntStatus)
+		frameManager.ReturnAllFrames(&(currentThread.myProcess.addrSpace))
+		processManager.TurnIntoZombie(currentThread.myProcess)
+		currentThread.myProcess.myThread = null
+		currentThread.myProcess = null
+		ThreadFinish()
+
     endFunction
 
 -----------------------------  FrameManager  ---------------------------------
@@ -1030,7 +1088,7 @@ code Kernel
       method Init ()
         --
         -- This method is called once at kernel startup time to initialize
-        -- the one and only "frameManager" object.  
+        -- the one and only "frameManager" object.
         --
         var i: int
           print ("Initializing Frame Manager...\n")
@@ -1102,44 +1160,38 @@ code Kernel
       ----------  FrameManager . GetNewFrames  ----------
 
       method GetNewFrames (aPageTable: ptr to AddrSpace, numFramesNeeded: int)
-        var 
-		i: int
-		f: int
-		frameAddress: int
-
+        var i, f, frameAddr: int
         frameManagerLock.Lock()
         while numberFreeFrames < numFramesNeeded
           newFramesAvailable.Wait(&frameManagerLock)
         endWhile
         for i = 0 to numFramesNeeded - 1
           f = framesInUse.FindZeroAndSet ()
-          frameAddress = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (f * PAGE_SIZE)
-          (*aPageTable).SetFrameAddr(i, frameAddress)
+          frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (f * PAGE_SIZE)
+          aPageTable.SetFrameAddr(i, frameAddr)
         endFor
         numberFreeFrames = numberFreeFrames - numFramesNeeded
-	(*aPageTable).numberOfPages = numFramesNeeded
-	frameManagerLock.Unlock()
-        endMethod
+				aPageTable.numberOfPages = numFramesNeeded
+				frameManagerLock.Unlock()
+      endMethod
 
       ----------  FrameManager . ReturnAllFrames  ----------
 
       method ReturnAllFrames (aPageTable: ptr to AddrSpace)
         var
-        	i: int
-        	bitIndex: int
-        	frameAddress: int
-
+          i:int
+          bitIndex: int
+          frameAddr: int
         frameManagerLock.Lock()
-        for i = 0 to (*aPageTable).numberOfPages - 1
-          frameAddress = (*aPageTable).ExtractFrameAddr(i)
-          bitIndex = (frameAddress - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE
+        for i = 0 to aPageTable.numberOfPages - 1
+          frameAddr = aPageTable.ExtractFrameAddr(i)
+          bitIndex = (frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE
           framesInUse.ClearBit(bitIndex)
         endFor
-        numberFreeFrames = numberFreeFrames + (*aPageTable).numberOfPages
+        numberFreeFrames = numberFreeFrames + aPageTable.numberOfPages
         newFramesAvailable.Broadcast(&frameManagerLock)
         frameManagerLock.Unlock()
-        endMethod
-
+      endMethod
     endBehavior
 
 -----------------------------  AddrSpace  ---------------------------------
@@ -1215,7 +1267,7 @@ code Kernel
         -- Return the physical address of the frame in the selected page
         -- table entry.
         --
-          return (pageTable[entry] & 0xffffe000) 
+          return (pageTable[entry] & 0xffffe000)
         endMethod
 
       ----------  AddrSpace . ExtractUndefinedBits  ----------
@@ -1224,7 +1276,7 @@ code Kernel
         --
         -- Return the undefined bits in the selected page table entry.
         --
-          return (pageTable[entry] & 0x00001ff0) 
+          return (pageTable[entry] & 0x00001ff0)
         endMethod
 
       ----------  AddrSpace . SetFrameAddr  ----------
@@ -1528,14 +1580,11 @@ code Kernel
     -- for the duration of its execution.
     --
 -- Uncomment this code later...
-      -- FatalError ("DISK INTERRUPTS NOT EXPECTED IN PROJECT 4")
-
       currentInterruptStatus = DISABLED
       -- print ("DiskInterruptHandler invoked!\n")
       if diskDriver.semToSignalOnCompletion
         diskDriver.semToSignalOnCompletion.Up()
       endIf
-
     endFunction
 
 -----------------------------  SerialInterruptHandler  --------------------------
@@ -1726,11 +1775,7 @@ code Kernel
 -----------------------------  Handle_Sys_Exit  ---------------------------------
 
   function Handle_Sys_Exit (returnStatus: int)
-      print("Handle_Sys_Exit invoked by a user thread!")
-      nl()
-      print("returnStatus = ")
-      printInt(returnStatus)
-      nl()
+      ProcessFinish(returnStatus)
     endFunction
 
 -----------------------------  Handle_Sys_Shutdown  ---------------------------------
@@ -1742,1042 +1787,1082 @@ code Kernel
 -----------------------------  Handle_Sys_Yield  ---------------------------------
 
   function Handle_Sys_Yield ()
-      print("Handle_Sys_Yield invoked by a user thread!")
-      nl() 
+      currentThread.Yield()
     endFunction
 
 -----------------------------  Handle_Sys_Fork  ---------------------------------
 
   function Handle_Sys_Fork () returns int
-      print("Handle_Sys_Fork invoked by a user thread!")
-      nl()
-      return 1000
+		var 
+			newThread: ptr to Thread
+			newPCB: ptr to ProcessControlBlock
+			oldInterruptStatus: int
+			oldPC: int	
+			i: int
+
+		oldInterruptStatus = SetInterruptsTo(DISABLED)
+
+		-- Initialize new thread and PCB
+		newThread = threadManager.GetANewThread()
+		newPCB = processManager.GetANewProcess()
+		newPCB.myThread = newThread
+		newPCB.parentsPid = currentThread.myProcess.pid
+        newThread.status = READY
+    	newThread.myProcess = newPCB
+
+		SaveUserRegs(&(newThread.userRegs[0]))
+
+		oldInterruptStatus = SetInterruptsTo(ENABLED)
+
+		newThread.stackTop = &(newThread.systemStack[SYSTEM_STACK_SIZE - 1]) 
+
+		frameManager.GetNewFrames(&(newPCB.addrSpace), currentThread.myProcess.addrSpace.numberOfPages)
+		for i = 0 to (currentThread.myProcess.addrSpace.numberOfPages - 1) by 1
+			MemoryCopy(newPCB.addrSpace.ExtractFrameAddr(i), currentThread.myProcess.addrSpace.ExtractFrameAddr(i), PAGE_SIZE)
+			if currentThread.myProcess.addrSpace.IsWritable(i) == false
+				newPCB.addrSpace.ClearWritable(i)
+			else
+				newPCB.addrSpace.SetWritable(i) 
+			endIf
+		endFor
+
+		oldPC = GetOldUserPCFromSystemStack() 
+		newThread.Fork(Resume_After_Fork, oldPC)
+		return newPCB.pid
     endFunction
+
+
+	function Resume_After_Fork (PC: int) 
+		var
+			oldIntStat: int
+			userStackTop: int
+			systemStackTop: int
+		
+		oldIntStat = SetInterruptsTo(DISABLED)
+		currentThread.myProcess.addrSpace.SetToThisPageTable()
+
+		RestoreUserRegs(&(currentThread.userRegs[0]))
+		currentThread.isUserThread = true
+		userStackTop = currentThread.userRegs[14]
+		systemStackTop = (& currentThread.systemStack[SYSTEM_STACK_SIZE - 1]) asInteger
+		BecomeUserThread(userStackTop, PC, systemStackTop)
+
+	endFunction
 
 -----------------------------  Handle_Sys_Join  ---------------------------------
 
   function Handle_Sys_Join (processID: int) returns int
-      print("Handle_Sys_Join invoked by a user thread!")
-      nl()
-      print("processID = ")
-      printInt(processID)
-      nl()
-      return 2000
+		var
+			i: int
+			childExitStatus: int
+		
+		for i = 0 to (MAX_NUMBER_OF_PROCESSES - 1) by 1
+			if processManager.processTable[i].pid == processID && processManager.processTable[i].parentsPid == currentThread.myProcess.pid && processManager.processTable[i].status != FREE
+				childExitStatus = processManager.WaitForZombie(&(processManager.processTable[i]))
+				return childExitStatus
+			endIf
+		endFor
+
+		return -1
     endFunction
+
 
 -----------------------------  Handle_Sys_Exec  ---------------------------------
 
   function Handle_Sys_Exec (filename: ptr to array of char) returns int
-			var
-        entryPoint: int
-				newAddrSpace: AddrSpace = new AddrSpace
-				initUserStack: int
-				initSystemStack: int
-				kFileName: array [MAX_STRING_SIZE] of char
-				openFilePtr: ptr to OpenFile
-				t: int
+      var
+        addrSpace: AddrSpace = new AddrSpace
+        strBuffer: array [MAX_STRING_SIZE] of char
+        openFile: ptr to OpenFile
+        initUserPC: int
+        initUserStackTop: int
+        initSystemStackTop: int
+        junk: int
 
-			t = SetInterruptsTo (DISABLED)
-			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kFileName, filename asInteger, MAX_STRING_SIZE) 
-
-			if t < 0
-				return -1
-			endIf
-			newAddrSpace.Init()
-			openFilePtr = fileManager.Open(&kFileName)
-			if openFilePtr == null
-				return -1
-			endIf
-			entryPoint = openFilePtr.LoadExecutable(&newAddrSpace)
-			if entryPoint < 0
-				return -1
-			endIf
-			frameManager.ReturnAllFrames(&((*currentThread).myProcess.addrSpace))
-			currentThread.myProcess.addrSpace = newAddrSpace
-			fileManager.Close(openFilePtr)
-			(*currentThread).isUserThread = true
-			initUserStack = newAddrSpace.numberOfPages*PAGE_SIZE 
-			initSystemStack = (& currentThread.systemStack[SYSTEM_STACK_SIZE-1]) asInteger
-			newAddrSpace.SetToThisPageTable()
-			BecomeUserThread(initUserStack, entryPoint, initSystemStack)
-			return 3000
+      junk = SetInterruptsTo (DISABLED)
+  		junk = currentThread.myProcess.addrSpace.GetStringFromVirtual(&strBuffer, filename asInteger, MAX_STRING_SIZE)
+  		if junk < 0
+  			return -1
+  		endIf
+  		addrSpace.Init()
+  		openFile = fileManager.Open(&strBuffer)
+  		if openFile == null
+  			return -1
+  		endIf
+  		initUserPC = openFile.LoadExecutable(&addrSpace)
+  		if initUserPC < 0
+  			return -1
+  		endIf
+  		frameManager.ReturnAllFrames(&(currentThread.myProcess.addrSpace))
+  		currentThread.myProcess.addrSpace = addrSpace
+  		fileManager.Close(openFile)
+  		currentThread.isUserThread = true
+  		initUserStackTop = addrSpace.numberOfPages * PAGE_SIZE
+  		initSystemStackTop = (& currentThread.systemStack[SYSTEM_STACK_SIZE-1]) asInteger
+  		addrSpace.SetToThisPageTable()
+  		BecomeUserThread(initUserStackTop, initUserPC, initSystemStackTop)
+      currentThread.myProcess.addrSpace = addrSpace
+      return 3000
     endFunction
 
 -----------------------------  Handle_Sys_Create  ---------------------------------
 
   function Handle_Sys_Create (filename: ptr to array of char) returns int
-			var
-					t: int
-					kFileName: array [MAX_STRING_SIZE] of char
-
-			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kFileName, filename asInteger, MAX_STRING_SIZE) 
-
-			print("Handle_Sys_Create invoked by a user thread!")
-			nl()
-			print("virt addr of filename = ")
-			printHex(filename asInteger)
-			nl()
-			print("filename = ")
-			print(&kFileName)
-			nl()
+      var
+        junk: int
+        strBuffer: array [MAX_STRING_SIZE] of char
+      junk = currentThread.myProcess.addrSpace.GetStringFromVirtual(&strBuffer, filename asInteger, MAX_STRING_SIZE)
+      print("Handle_Sys_Create invoked!")
+      nl()
+      print("virt adrr of filename = ")
+      printHex(filename asInteger)
+      nl()
+      print("Filename = ")
+      print(&strBuffer)
+      nl()
       return 4000
     endFunction
 
 -----------------------------  Handle_Sys_Open  ---------------------------------
 
   function Handle_Sys_Open (filename: ptr to array of char) returns int
-			var
-					t: int
-					kfileName: array [MAX_STRING_SIZE] of char
-
-			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kfileName, filename asInteger, MAX_STRING_SIZE) 
-
-			print("Handle_Sys_Open invoked by a user thread!")
-			nl()
-			print("virt addr of filename = ")
-			printHex(filename asInteger)
-			nl()
-			print("filename = ")
-			print(&kfileName)
-			nl()
-			return 5000
+      var
+        junk: int
+        strBuffer: array [MAX_STRING_SIZE] of char
+      junk = currentThread.myProcess.addrSpace.GetStringFromVirtual(&strBuffer, filename asInteger, MAX_STRING_SIZE)
+      print("Handle_Sys_Open invoked!")
+      nl()
+      print("virt adrr of filename = ")
+      printHex(filename asInteger)
+      nl()
+      print("Filename = ")
+      print(&strBuffer)
+      nl()
+      return 5000
     endFunction
 
 -----------------------------  Handle_Sys_Read  ---------------------------------
 
   function Handle_Sys_Read (fileDesc: int, buffer: ptr to char, sizeInBytes: int) returns int
-			var
-					t: int
-					kBuffer: array [MAX_STRING_SIZE] of char
-
-			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kBuffer, buffer asInteger, MAX_STRING_SIZE)
-
-			print("Handle_Sys_Read invoked by a user thread!")
-			nl()
-			print("fileDesc = ")
-			printInt(fileDesc)
-			nl()
-			print("virt addr of buffer = ")
-			printHex(buffer asInteger)
-			nl()
-			print("sizeInBytes = ")
-			printInt(sizeInBytes)
-			nl()
-			return 6000
+      print("Handle_Sys_Read invoked!")
+      nl()
+      print("fileDesc = ")
+      printInt(fileDesc)
+      nl()
+      print("virt addr of buffer = ")
+      printHex(buffer asInteger)
+      nl()
+      print("sizeInBytes = ")
+      printInt(sizeInBytes)
+      nl()
+      return 6000
     endFunction
 
 -----------------------------  Handle_Sys_Write  ---------------------------------
 
   function Handle_Sys_Write (fileDesc: int, buffer: ptr to char, sizeInBytes: int) returns int
-			var
-					t: int
-					kBuffer: array [MAX_STRING_SIZE] of char
-
-			t = (*currentThread).myProcess.addrSpace.GetStringFromVirtual(&kBuffer, buffer asInteger, MAX_STRING_SIZE)
-
-			print("Handle_Sys_Write invoked by a user thread!")
-			nl()
-			print("fileDesc = ")
-			printInt(fileDesc)
-			nl()
-			print("virt addr of buffer = ")
-			printHex(buffer asInteger)
-			nl()
-			print("sizeInBytes = ")
-			printInt(sizeInBytes)
-			nl()
-			return 7000
+      print("Handle_Sys_Write invoked!")
+      nl()
+      print("fileDesc = ")
+      printInt(fileDesc)
+      nl()
+      print("virt addr of buffer = ")
+      printHex(buffer asInteger)
+      nl()
+      print("sizeInBytes = ")
+      printInt(sizeInBytes)
+      nl()
+      return 7000
     endFunction
 
 -----------------------------  Handle_Sys_Seek  ---------------------------------
 
   function Handle_Sys_Seek (fileDesc: int, newCurrentPos: int) returns int
-			print("Handle_Sys_Seek invoked by a user thread!")
-			nl()
-			print("fileDesc = ")
-			printInt(fileDesc)
-			nl()
-			print("newCurrentPos = ")
-			printInt(newCurrentPos)
-			nl()
-			return 8000
+      print("Handle_Sys_Seek invoked!")
+      nl()
+      print("fileDesc = ")
+      printInt(fileDesc)
+      nl()
+      print("newCurrentPos = ")
+      printInt(newCurrentPos)
+      nl()
+      return 8000
     endFunction
 
 -----------------------------  Handle_Sys_Close  ---------------------------------
 
   function Handle_Sys_Close (fileDesc: int)
-      print("Handle_Sys_Close invoked by a user thread!")
-			nl()
-			print("fileDesc = ")
-			printInt(fileDesc)
-			nl()
+      print("Handle_Sys_Close invoked!")
+      nl()
+      print("fileDesc = ")
+      printInt(fileDesc)
+      nl()
     endFunction
 
------------------------------  DiskDriver  ---------------------------------
+    -----------------------------  DiskDriver  ---------------------------------
 
-  const
-    DISK_STATUS_BUSY                               = 0x00000000
-    DISK_STATUS_OPERATION_COMPLETED_OK             = 0x00000001
-    DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_1   = 0x00000002
-    DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_2   = 0x00000003
-    DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_3   = 0x00000004
-    DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_4   = 0x00000005
-    DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_5   = 0x00000006
+      const
+        DISK_STATUS_BUSY                               = 0x00000000
+        DISK_STATUS_OPERATION_COMPLETED_OK             = 0x00000001
+        DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_1   = 0x00000002
+        DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_2   = 0x00000003
+        DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_3   = 0x00000004
+        DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_4   = 0x00000005
+        DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_5   = 0x00000006
 
-    DISK_READ_COMMAND  = 0x00000001
-    DISK_WRITE_COMMAND = 0x00000002
+        DISK_READ_COMMAND  = 0x00000001
+        DISK_WRITE_COMMAND = 0x00000002
 
-  behavior DiskDriver
-    --
-    -- There is only one instance of this class.  It provides "read" and "write"
-    -- methods to transfer data from and to the disk.
-    --
-    -- In this implementation, all I/O is synchronous.  These methods perform
-    -- busy-waiting until the disk operation has completed.
-
-      ----------  DiskDriver . Init  ----------
-
-      method Init ()
-          print ("Initializing Disk Driver...\n")
-          DISK_STATUS_WORD_ADDRESS = 0x00FFFF08 asPtrTo int
-          DISK_COMMAND_WORD_ADDRESS = 0x00FFFF08 asPtrTo int
-          DISK_MEMORY_ADDRESS_REGISTER = 0x00FFFF0C asPtrTo int
-          DISK_SECTOR_NUMBER_REGISTER = 0x00FFFF10 asPtrTo int
-          DISK_SECTOR_COUNT_REGISTER = 0x00FFFF14 asPtrTo int
-          semToSignalOnCompletion = null
-          semUsedInSynchMethods = new Semaphore
-          semUsedInSynchMethods.Init (0)
-          diskBusy = new Mutex
-          diskBusy.Init ()
-        endMethod
-
-      ----------  DiskDriver . SynchReadSector  ----------
-
-      method SynchReadSector  (sectorAddr, numberOfSectors, memoryAddr: int)
+      behavior DiskDriver
         --
-        -- This method reads "numberOfSectors" sectors (of PAGE_SIZE bytes each)
-        -- from the disk and places the data in memory, starting at "memoryAddr".
-        -- It waits until the I/O is complete before returning.
+        -- There is only one instance of this class.  It provides "read" and "write"
+        -- methods to transfer data from and to the disk.
         --
-        -- If there is a (simulated) disk hardware failure, then this routine
-        -- simply tries again in an infinite loop, until it succeeds.
-        --
-          -- print ("SynchReadSector called\n")
-          -- printIntVar ("  sectorAddr", sectorAddr)
-          -- printIntVar ("  numberOfSectors", numberOfSectors)
-          -- printHexVar ("  memoryAddr", memoryAddr)
-          diskBusy.Lock ()
-          while true
+        -- In this implementation, all I/O is synchronous.  These methods perform
+        -- busy-waiting until the disk operation has completed.
 
-            self.StartReadSector  (sectorAddr, numberOfSectors, memoryAddr,
-                                   & semUsedInSynchMethods)
-            semUsedInSynchMethods.Down ()
+          ----------  DiskDriver . Init  ----------
 
-            -- Check the return status
-            switch * DISK_STATUS_WORD_ADDRESS
-              case DISK_STATUS_OPERATION_COMPLETED_OK:
-                diskBusy.Unlock ()
-                return
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_1:
-                FatalError ("Disk I/O error in SynchReadSector: Memory addr is not page-aligned or sector count is not positive")
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_2:
-                FatalError ("Disk I/O error in SynchReadSector: Attempt to access invalid memory address")
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_3:
-                FatalError ("Disk I/O error in SynchReadSector: Bad sectorAddr or sectorCount specifies non-existant sector")
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_4:
-                -- This case occurs when there is a hard or soft (simulated)
-                -- hardware error while performing the disk operation.
-                break
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_5:
-                FatalError ("Disk I/O error in SynchReadSector: Bad command word")
-              default:
-                FatalError ("SynchReadSector: Unexpected status code")
-            endSwitch
-            -- print ("\n\nIn SynchReadSector: A simulated disk I/O error occurred...\n\n")
-          endWhile
+          method Init ()
+              print ("Initializing Disk Driver...\n")
+              DISK_STATUS_WORD_ADDRESS = 0x00FFFF08 asPtrTo int
+              DISK_COMMAND_WORD_ADDRESS = 0x00FFFF08 asPtrTo int
+              DISK_MEMORY_ADDRESS_REGISTER = 0x00FFFF0C asPtrTo int
+              DISK_SECTOR_NUMBER_REGISTER = 0x00FFFF10 asPtrTo int
+              DISK_SECTOR_COUNT_REGISTER = 0x00FFFF14 asPtrTo int
+              semToSignalOnCompletion = null
+              semUsedInSynchMethods = new Semaphore
+              semUsedInSynchMethods.Init (0)
+              diskBusy = new Mutex
+              diskBusy.Init ()
+            endMethod
 
-        endMethod
+          ----------  DiskDriver . SynchReadSector  ----------
 
-      ----------  DiskDriver . StartReadSector  ----------
+          method SynchReadSector  (sectorAddr, numberOfSectors, memoryAddr: int)
+            --
+            -- This method reads "numberOfSectors" sectors (of PAGE_SIZE bytes each)
+            -- from the disk and places the data in memory, starting at "memoryAddr".
+            -- It waits until the I/O is complete before returning.
+            --
+            -- If there is a (simulated) disk hardware failure, then this routine
+            -- simply tries again in an infinite loop, until it succeeds.
+            --
+              -- print ("SynchReadSector called\n")
+              -- printIntVar ("  sectorAddr", sectorAddr)
+              -- printIntVar ("  numberOfSectors", numberOfSectors)
+              -- printHexVar ("  memoryAddr", memoryAddr)
+              diskBusy.Lock ()
+              while true
 
-      method StartReadSector  (sectorAddr, numberOfSectors, memoryAddr: int,
-                               whoCares: ptr to Semaphore)
-        --
-        -- This method reads "numberOfSectors" sectors (of PAGE_SIZE bytes each)
-        -- from the disk and places the data in memory, starting at "memoryAddr".
-        -- The "whoCares" argument is a Semaphore that we will signal after the
-        -- I/O operation is complete; if null no thread will be notified.
-        --
-          -- print ("StartReadSector called\n")
-          -- printIntVar ("  sectorAddr", sectorAddr)
-          -- printIntVar ("  numberOfSectors", numberOfSectors)
-          -- printHexVar ("  memoryAddr", memoryAddr)
-          -- printHexVar ("  whoCares", whoCares asInteger)
+                self.StartReadSector  (sectorAddr, numberOfSectors, memoryAddr,
+                                       & semUsedInSynchMethods)
+                semUsedInSynchMethods.Down ()
 
-          -- Save the semaphore
-          semToSignalOnCompletion = whoCares
+                -- Check the return status
+                switch * DISK_STATUS_WORD_ADDRESS
+                  case DISK_STATUS_OPERATION_COMPLETED_OK:
+                    diskBusy.Unlock ()
+                    return
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_1:
+                    FatalError ("Disk I/O error in SynchReadSector: Memory addr is not page-aligned or sector count is not positive")
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_2:
+                    FatalError ("Disk I/O error in SynchReadSector: Attempt to access invalid memory address")
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_3:
+                    FatalError ("Disk I/O error in SynchReadSector: Bad sectorAddr or sectorCount specifies non-existant sector")
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_4:
+                    -- This case occurs when there is a hard or soft (simulated)
+                    -- hardware error while performing the disk operation.
+                    break
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_5:
+                    FatalError ("Disk I/O error in SynchReadSector: Bad command word")
+                  default:
+                    FatalError ("SynchReadSector: Unexpected status code")
+                endSwitch
+                -- print ("\n\nIn SynchReadSector: A simulated disk I/O error occurred...\n\n")
+              endWhile
 
-          -- Move the parameters to the disk and start the I/O
-          * DISK_MEMORY_ADDRESS_REGISTER = memoryAddr
-          * DISK_SECTOR_NUMBER_REGISTER = sectorAddr
-          * DISK_SECTOR_COUNT_REGISTER = numberOfSectors
-          * DISK_COMMAND_WORD_ADDRESS = DISK_READ_COMMAND    -- Starts the I/O
-        endMethod
+            endMethod
 
-      ----------  DiskDriver . SynchWriteSector  ----------
+          ----------  DiskDriver . StartReadSector  ----------
 
-      method SynchWriteSector  (sectorAddr, numberOfSectors, memoryAddr: int)
-        --
-        -- This method writes "numberOfSectors" sectors (of PAGE_SIZE bytes each)
-        -- to the disk.  It waits until the I/O is complete before returning.
-        --
-        -- If there is a (simulated) disk hardware failure, then this routine
-        -- simply tries again in an infinite loop, until it succeeds.
-        --
-          -- print ("SynchWriteSector called\n")
-          -- printIntVar ("  sectorAddr", sectorAddr)
-          -- printIntVar ("  numberOfSectors", numberOfSectors)
-          -- printHexVar ("  memoryAddr", memoryAddr)
-          diskBusy.Lock ()
-          while true
-            self.StartWriteSector  (sectorAddr, numberOfSectors, memoryAddr,
-                                    & semUsedInSynchMethods)
-            semUsedInSynchMethods.Down ()
+          method StartReadSector  (sectorAddr, numberOfSectors, memoryAddr: int,
+                                   whoCares: ptr to Semaphore)
+            --
+            -- This method reads "numberOfSectors" sectors (of PAGE_SIZE bytes each)
+            -- from the disk and places the data in memory, starting at "memoryAddr".
+            -- The "whoCares" argument is a Semaphore that we will signal after the
+            -- I/O operation is complete; if null no thread will be notified.
+            --
+              -- print ("StartReadSector called\n")
+              -- printIntVar ("  sectorAddr", sectorAddr)
+              -- printIntVar ("  numberOfSectors", numberOfSectors)
+              -- printHexVar ("  memoryAddr", memoryAddr)
+              -- printHexVar ("  whoCares", whoCares asInteger)
 
-            -- Check the return status
-            switch * DISK_STATUS_WORD_ADDRESS
-              case DISK_STATUS_OPERATION_COMPLETED_OK:
-                diskBusy.Unlock ()
-                return
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_1:
-                FatalError ("Disk I/O error in SynchWriteSector: Memory addr is not page-aligned or sector count is not positive")
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_2:
-                FatalError ("Disk I/O error in SynchWriteSector: Attempt to access invalid memory address")
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_3:
-                FatalError ("Disk I/O error in SynchWriteSector: Bad sectorAddr or sectorCount specifies non-existant sector")
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_4:
-                -- This case occurs when there is a hard or soft (simulated)
-                -- hardware error while performing the disk operation.
-                break
-              case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_5:
-                FatalError ("Disk I/O error in SynchWriteSector: Bad command word")
-              default:
-                FatalError ("SynchWriteSector: Unexpected status code")
-            endSwitch
-            -- print ("\n\nIn SynchWriteSector: A simulated disk I/O error occurred...\n\n")
-          endWhile
+              -- Save the semaphore
+              semToSignalOnCompletion = whoCares
 
-        endMethod
+              -- Move the parameters to the disk and start the I/O
+              * DISK_MEMORY_ADDRESS_REGISTER = memoryAddr
+              * DISK_SECTOR_NUMBER_REGISTER = sectorAddr
+              * DISK_SECTOR_COUNT_REGISTER = numberOfSectors
+              * DISK_COMMAND_WORD_ADDRESS = DISK_READ_COMMAND    -- Starts the I/O
+            endMethod
 
-      ----------  DiskDriver . StartWriteSector  ----------
+          ----------  DiskDriver . SynchWriteSector  ----------
 
-      method StartWriteSector  (sectorAddr, numberOfSectors, memoryAddr: int,
-                                whoCares: ptr to Semaphore)
-        --
-        -- This method writes "numberOfSectors" sectors (of PAGE_SIZE bytes each)
-        -- to the disk.  It returns immediately after starting the I/O.
-        --
-        -- The "whoCares" argument is a Semaphore that we will signal after the
-        -- I/O operation is complete; if null no thread will be notified.
-        --
-          -- print ("SynchWriteSector called\n")
-          -- printIntVar ("  sectorAddr", sectorAddr)
-          -- printIntVar ("  numberOfSectors", numberOfSectors)
-          -- printHexVar ("  memoryAddr", memoryAddr)
+          method SynchWriteSector  (sectorAddr, numberOfSectors, memoryAddr: int)
+            --
+            -- This method writes "numberOfSectors" sectors (of PAGE_SIZE bytes each)
+            -- to the disk.  It waits until the I/O is complete before returning.
+            --
+            -- If there is a (simulated) disk hardware failure, then this routine
+            -- simply tries again in an infinite loop, until it succeeds.
+            --
+              -- print ("SynchWriteSector called\n")
+              -- printIntVar ("  sectorAddr", sectorAddr)
+              -- printIntVar ("  numberOfSectors", numberOfSectors)
+              -- printHexVar ("  memoryAddr", memoryAddr)
+              diskBusy.Lock ()
+              while true
+                self.StartWriteSector  (sectorAddr, numberOfSectors, memoryAddr,
+                                        & semUsedInSynchMethods)
+                semUsedInSynchMethods.Down ()
 
-          -- Save the semaphore
-          semToSignalOnCompletion = whoCares
+                -- Check the return status
+                switch * DISK_STATUS_WORD_ADDRESS
+                  case DISK_STATUS_OPERATION_COMPLETED_OK:
+                    diskBusy.Unlock ()
+                    return
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_1:
+                    FatalError ("Disk I/O error in SynchWriteSector: Memory addr is not page-aligned or sector count is not positive")
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_2:
+                    FatalError ("Disk I/O error in SynchWriteSector: Attempt to access invalid memory address")
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_3:
+                    FatalError ("Disk I/O error in SynchWriteSector: Bad sectorAddr or sectorCount specifies non-existant sector")
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_4:
+                    -- This case occurs when there is a hard or soft (simulated)
+                    -- hardware error while performing the disk operation.
+                    break
+                  case DISK_STATUS_OPERATION_COMPLETED_WITH_ERROR_5:
+                    FatalError ("Disk I/O error in SynchWriteSector: Bad command word")
+                  default:
+                    FatalError ("SynchWriteSector: Unexpected status code")
+                endSwitch
+                -- print ("\n\nIn SynchWriteSector: A simulated disk I/O error occurred...\n\n")
+              endWhile
 
-          * DISK_MEMORY_ADDRESS_REGISTER = memoryAddr
-          * DISK_SECTOR_NUMBER_REGISTER = sectorAddr
-          * DISK_SECTOR_COUNT_REGISTER = numberOfSectors
-          * DISK_COMMAND_WORD_ADDRESS = DISK_WRITE_COMMAND    -- Starts the I/O
-        endMethod
+            endMethod
 
-    endBehavior
+          ----------  DiskDriver . StartWriteSector  ----------
 
------------------------------  FileManager  ---------------------------------
+          method StartWriteSector  (sectorAddr, numberOfSectors, memoryAddr: int,
+                                    whoCares: ptr to Semaphore)
+            --
+            -- This method writes "numberOfSectors" sectors (of PAGE_SIZE bytes each)
+            -- to the disk.  It returns immediately after starting the I/O.
+            --
+            -- The "whoCares" argument is a Semaphore that we will signal after the
+            -- I/O operation is complete; if null no thread will be notified.
+            --
+              -- print ("SynchWriteSector called\n")
+              -- printIntVar ("  sectorAddr", sectorAddr)
+              -- printIntVar ("  numberOfSectors", numberOfSectors)
+              -- printHexVar ("  memoryAddr", memoryAddr)
 
-  behavior FileManager
+              -- Save the semaphore
+              semToSignalOnCompletion = whoCares
 
-      ----------  FileManager . Init  ----------
+              * DISK_MEMORY_ADDRESS_REGISTER = memoryAddr
+              * DISK_SECTOR_NUMBER_REGISTER = sectorAddr
+              * DISK_SECTOR_COUNT_REGISTER = numberOfSectors
+              * DISK_COMMAND_WORD_ADDRESS = DISK_WRITE_COMMAND    -- Starts the I/O
+            endMethod
 
-      method Init ()
-        --
-        -- This method is called once at kernel startup time to initialize
-        -- the one and only "FileManager" object.  It is passed a pointer
-        -- to a frame of memory. 
-        --
-        var i: int
-          print ("Initializing File Manager...\n")
-          fileManagerLock = new Mutex
-          fileManagerLock.Init ()
+        endBehavior
 
-          -- Initialize the FileControlBlock stuff
-          fcbFreeList = new List [FileControlBlock]
-          anFCBBecameFree = new Condition
-          anFCBBecameFree.Init ()
-          fcbTable = new array of FileControlBlock
-                { MAX_NUMBER_OF_FILE_CONTROL_BLOCKS of new FileControlBlock }
-          for i = 0 to MAX_NUMBER_OF_FILE_CONTROL_BLOCKS-1
-            fcbTable[i].fcbID = i
-            fcbTable[i].Init()
-            fcbFreeList.AddToEnd (&fcbTable[i])
-          endFor
+    -----------------------------  FileManager  ---------------------------------
 
-          -- Initialize the OpenFile stuff
-          openFileFreeList = new List [OpenFile]
-          anOpenFileBecameFree = new Condition
-          anOpenFileBecameFree.Init ()
-          openFileTable = new array of OpenFile
-                { MAX_NUMBER_OF_OPEN_FILES of new OpenFile }
-          for i = 0 to MAX_NUMBER_OF_OPEN_FILES-1
-            openFileTable[i].kind = FILE
-            openFileFreeList.AddToEnd (&openFileTable[i])
-          endFor
+      behavior FileManager
 
-          -- Create the special "stdin/stdout" open file
-          serialTerminalFile = new OpenFile
-          serialTerminalFile.kind = TERMINAL
+          ----------  FileManager . Init  ----------
 
-          -- Read in sector 0 from the disk.  This is the
-          -- "Stub System" directory page.  We'll just keep this around
-          -- forever, for use whenever we want to open a file.
-          directoryFrame = frameManager.GetAFrame ()
-          diskDriver.SynchReadSector (0,    -- sector to read
-                                      1,    -- number of sectors to read
-                                      directoryFrame)
-        endMethod
+          method Init ()
+            --
+            -- This method is called once at kernel startup time to initialize
+            -- the one and only "FileManager" object.  It is passed a pointer
+            -- to a frame of memory.
+            --
+            var i: int
+              print ("Initializing File Manager...\n")
+              fileManagerLock = new Mutex
+              fileManagerLock.Init ()
 
-      ----------  FileManager . Print  ----------
+              -- Initialize the FileControlBlock stuff
+              fcbFreeList = new List [FileControlBlock]
+              anFCBBecameFree = new Condition
+              anFCBBecameFree.Init ()
+              fcbTable = new array of FileControlBlock
+                    { MAX_NUMBER_OF_FILE_CONTROL_BLOCKS of new FileControlBlock }
+              for i = 0 to MAX_NUMBER_OF_FILE_CONTROL_BLOCKS-1
+                fcbTable[i].fcbID = i
+                fcbTable[i].Init()
+                fcbFreeList.AddToEnd (&fcbTable[i])
+              endFor
 
-      method Print ()
-        var i: int
-          fileManagerLock.Lock ()           -- Need lock since we touch freeLists
-          print ("Here is the FileControlBlock table...\n")
-          for i = 0 to MAX_NUMBER_OF_FILE_CONTROL_BLOCKS-1
-            print ("  ")
-            printInt (i)
-            print (":  ")
-            fcbTable[i].Print()
-          endFor
-          print ("Here is the FREE list of FileControlBlocks:\n   ")
-          fcbFreeList.ApplyToEach (printFCB)
-          nl ()
-          print ("Here is the OpenFile table...\n")
-          for i = 0 to MAX_NUMBER_OF_OPEN_FILES-1
-            print ("  ")
-            printInt (i)
-            print (":  0x")
-            printHex ((& openFileTable[i]) asInteger)
-            print (":  ")
-            openFileTable[i].Print()
-          endFor
-          print ("Here is the FREE list of OpenFiles:\n")
-          openFileFreeList.ApplyToEach (printOpen)
-          fileManagerLock.Unlock ()
-        endMethod
+              -- Initialize the OpenFile stuff
+              openFileFreeList = new List [OpenFile]
+              anOpenFileBecameFree = new Condition
+              anOpenFileBecameFree.Init ()
+              openFileTable = new array of OpenFile
+                    { MAX_NUMBER_OF_OPEN_FILES of new OpenFile }
+              for i = 0 to MAX_NUMBER_OF_OPEN_FILES-1
+                openFileTable[i].kind = FILE
+                openFileFreeList.AddToEnd (&openFileTable[i])
+              endFor
 
-      ----------  FileManager . Open  ----------
+              -- Create the special "stdin/stdout" open file
+              serialTerminalFile = new OpenFile
+              serialTerminalFile.kind = TERMINAL
 
-      method Open (filename: String) returns ptr to OpenFile
-      --
-      -- This method is called to open a file.  It returns pointer to
-      -- a newly allocated OpenFile.  It will set its "numberOfUsers"
-      -- count to 1.
-      --
-      -- The file must already exist on the disk.  If it cannot be found,
-      -- this method returns null.
-      --
-      -- This method is reentrant, and may block the caller.
-      --
-          var open: ptr to OpenFile
-              fcb: ptr to FileControlBlock
+              -- Read in sector 0 from the disk.  This is the
+              -- "Stub System" directory page.  We'll just keep this around
+              -- forever, for use whenever we want to open a file.
+              directoryFrame = frameManager.GetAFrame ()
+              diskDriver.SynchReadSector (0,    -- sector to read
+                                          1,    -- number of sectors to read
+                                          directoryFrame)
+            endMethod
 
-          -- First, get an FCB that points to the file.
-          -- This will increment fcb.numberOfUsers.
-          fcb = fileManager.FindFCB (filename)
-          if fcb == null
-            return null
-          endIf
+          ----------  FileManager . Print  ----------
 
-          -- Next, allocate an OpenFile, waiting if necessary.
-          fileManagerLock.Lock()
-          while openFileFreeList.IsEmpty ()
-            anOpenFileBecameFree.Wait (& fileManagerLock)
-          endWhile
-          open = openFileFreeList.Remove ()
+          method Print ()
+            var i: int
+              fileManagerLock.Lock ()           -- Need lock since we touch freeLists
+              print ("Here is the FileControlBlock table...\n")
+              for i = 0 to MAX_NUMBER_OF_FILE_CONTROL_BLOCKS-1
+                print ("  ")
+                printInt (i)
+                print (":  ")
+                fcbTable[i].Print()
+              endFor
+              print ("Here is the FREE list of FileControlBlocks:\n   ")
+              fcbFreeList.ApplyToEach (printFCB)
+              nl ()
+              print ("Here is the OpenFile table...\n")
+              for i = 0 to MAX_NUMBER_OF_OPEN_FILES-1
+                print ("  ")
+                printInt (i)
+                print (":  0x")
+                printHex ((& openFileTable[i]) asInteger)
+                print (":  ")
+                openFileTable[i].Print()
+              endFor
+              print ("Here is the FREE list of OpenFiles:\n")
+              openFileFreeList.ApplyToEach (printOpen)
+              fileManagerLock.Unlock ()
+            endMethod
 
-          -- Connect it to this FCB and set its "numberOfUsers" count.
-          open.fcb = fcb
-          open.numberOfUsers = 1
-          -- printHexVar ("open.fcb", open.fcb asInteger)
+          ----------  FileManager . Open  ----------
 
-          open.currentPos = 0
-          -- Release FileManagerLock and return a pointer to the OpenFile object
-          fileManagerLock.Unlock()
-          return open
-        endMethod
+          method Open (filename: String) returns ptr to OpenFile
+          --
+          -- This method is called to open a file.  It returns pointer to
+          -- a newly allocated OpenFile.  It will set its "numberOfUsers"
+          -- count to 1.
+          --
+          -- The file must already exist on the disk.  If it cannot be found,
+          -- this method returns null.
+          --
+          -- This method is reentrant, and may block the caller.
+          --
+              var open: ptr to OpenFile
+                  fcb: ptr to FileControlBlock
 
-      ----------  FileManager . FindFCB  ----------
+              -- First, get an FCB that points to the file.
+              -- This will increment fcb.numberOfUsers.
+              fcb = fileManager.FindFCB (filename)
+              if fcb == null
+                return null
+              endIf
 
-      method FindFCB (filename: String) returns ptr to FileControlBlock
-      --
-      -- This method is called when opening a file.  The file may already be
-      -- open; if so we return a pointer to the FCB that describes that
-      -- file.  If not, we allocate a new FCB and return a pointer to it.
-      --
-      -- The file must already exist on the disk.  If it cannot be found,
-      -- this method returns null.
-      --
-      -- The numberOfUsers field in the FCB is incremented.
-      --
-      -- This implementation is a "dummy" implementation, using the "stub"
-      -- file system.  The stub file system has a single directory which
-      -- is stored in sector 0.  When the fileManager was initialized, sector
-      -- 0 was pre-read, so all we do here is consult it to locate the
-      -- the file.  Then we store the relevant info in the FCB.
-      --
-      -- This method is reentrant, and may block the caller.
-      --
-          var i, start, numFiles, fileLen, fileNameLen: int
-              fcb: ptr to FileControlBlock
-              p: ptr to int
-          -- print ("Opening a file\n")
+              -- Next, allocate an OpenFile, waiting if necessary.
+              fileManagerLock.Lock()
+              while openFileFreeList.IsEmpty ()
+                anOpenFileBecameFree.Wait (& fileManagerLock)
+              endWhile
+              open = openFileFreeList.Remove ()
 
-          -- Begin the search with byte 0 of the directory sector
-          p = directoryFrame asPtrTo int
+              -- Connect it to this FCB and set its "numberOfUsers" count.
+              open.fcb = fcb
+              open.numberOfUsers = 1
+              -- printHexVar ("open.fcb", open.fcb asInteger)
 
-          -- Check the magic number
-          i = *p
-          p = p + 4
-          if i != 0x73747562       -- in ASCII this is "stub"
-            FatalError ("Magic number in sector 0 of stub file system is bad")
-          endIf
-
-          -- Get the number of files in the directory
-          numFiles = *p
-          p = p + 4
-          i = *p     -- This is the nextFreeSector; ignore it.
-          p = p + 4
-
-          -- Run through each directory entry, looking for a match
-          while numFiles > 0
-            copyUnalignedWord (&start, p)
-            p = p + 4
-            copyUnalignedWord (&fileLen, p)
-            p = p + 4
-            copyUnalignedWord (&fileNameLen, p)
-            p = p + 4
-            if fileNameLen == filename arraySize &&
-                  MemoryEqual (p asPtrTo char, &filename[0], fileNameLen)
-              break
-            endIf
-            p = p + fileNameLen
-            numFiles = numFiles - 1
-          endWhile
-
-          -- If we didn't find a matching name, return null
-          if numFiles <= 0
-            return null
-          endIf
-
-          fileManagerLock.Lock()
-          -- See if there is an FCB for this file; if so return it.
-          for i = 0 to MAX_NUMBER_OF_FILE_CONTROL_BLOCKS-1
-            fcb = &fcbTable[i]
-            if fcb.startingSectorOfFile == start
-              fcb.numberOfUsers = fcb.numberOfUsers + 1
+              open.currentPos = 0
+              -- Release FileManagerLock and return a pointer to the OpenFile object
               fileManagerLock.Unlock()
+              return open
+            endMethod
+
+          ----------  FileManager . FindFCB  ----------
+
+          method FindFCB (filename: String) returns ptr to FileControlBlock
+          --
+          -- This method is called when opening a file.  The file may already be
+          -- open; if so we return a pointer to the FCB that describes that
+          -- file.  If not, we allocate a new FCB and return a pointer to it.
+          --
+          -- The file must already exist on the disk.  If it cannot be found,
+          -- this method returns null.
+          --
+          -- The numberOfUsers field in the FCB is incremented.
+          --
+          -- This implementation is a "dummy" implementation, using the "stub"
+          -- file system.  The stub file system has a single directory which
+          -- is stored in sector 0.  When the fileManager was initialized, sector
+          -- 0 was pre-read, so all we do here is consult it to locate the
+          -- the file.  Then we store the relevant info in the FCB.
+          --
+          -- This method is reentrant, and may block the caller.
+          --
+              var i, start, numFiles, fileLen, fileNameLen: int
+                  fcb: ptr to FileControlBlock
+                  p: ptr to int
+              -- print ("Opening a file\n")
+
+              -- Begin the search with byte 0 of the directory sector
+              p = directoryFrame asPtrTo int
+
+              -- Check the magic number
+              i = *p
+              p = p + 4
+              if i != 0x73747562       -- in ASCII this is "stub"
+                FatalError ("Magic number in sector 0 of stub file system is bad")
+              endIf
+
+              -- Get the number of files in the directory
+              numFiles = *p
+              p = p + 4
+              i = *p     -- This is the nextFreeSector; ignore it.
+              p = p + 4
+
+              -- Run through each directory entry, looking for a match
+              while numFiles > 0
+                copyUnalignedWord (&start, p)
+                p = p + 4
+                copyUnalignedWord (&fileLen, p)
+                p = p + 4
+                copyUnalignedWord (&fileNameLen, p)
+                p = p + 4
+                if fileNameLen == filename arraySize &&
+                      MemoryEqual (p asPtrTo char, &filename[0], fileNameLen)
+                  break
+                endIf
+                p = p + fileNameLen
+                numFiles = numFiles - 1
+              endWhile
+
+              -- If we didn't find a matching name, return null
+              if numFiles <= 0
+                return null
+              endIf
+
+              fileManagerLock.Lock()
+              -- See if there is an FCB for this file; if so return it.
+              for i = 0 to MAX_NUMBER_OF_FILE_CONTROL_BLOCKS-1
+                fcb = &fcbTable[i]
+                if fcb.startingSectorOfFile == start
+                  fcb.numberOfUsers = fcb.numberOfUsers + 1
+                  fileManagerLock.Unlock()
+                  return fcb
+                endIf
+              endFor
+
+              -- Get an unused FCB, waiting until one becomes available
+              while fcbFreeList.IsEmpty ()
+                anFCBBecameFree.Wait (& fileManagerLock)
+              endWhile
+              fcb = fcbFreeList.Remove ()
+
+              -- Safe to unlock now, since no one else will use this FCB
+              fileManagerLock.Unlock()
+
+              -- Set the FCB up, and return it.
+              fcb.startingSectorOfFile = start
+              fcb.sizeOfFileInBytes = fileLen
+              fcb.numberOfUsers = 1
+              if fcb.relativeSectorInBuffer >= 0 || fcb.bufferIsDirty
+                FatalError ("In FileManager.Open: a free FCB appears not to have been closed properly")
+              endIf
               return fcb
-            endIf
-          endFor
+            endMethod
 
-          -- Get an unused FCB, waiting until one becomes available
-          while fcbFreeList.IsEmpty ()
-            anFCBBecameFree.Wait (& fileManagerLock)
-          endWhile
-          fcb = fcbFreeList.Remove ()
-
-          -- Safe to unlock now, since no one else will use this FCB
-          fileManagerLock.Unlock()
-
-          -- Set the FCB up, and return it.
-          fcb.startingSectorOfFile = start
-          fcb.sizeOfFileInBytes = fileLen
-          fcb.numberOfUsers = 1
-          if fcb.relativeSectorInBuffer >= 0 || fcb.bufferIsDirty
-            FatalError ("In FileManager.Open: a free FCB appears not to have been closed properly")
-          endIf
-          return fcb
-        endMethod
-
-      ----------  FileManager . Close  ----------
-      --
-      -- This method is called to close an OpenFile.  If there is a pending
-      -- write (i.e., the buffer is dirty) then it is written out first.
-      --
-      -- The "numberOfUsers" for the OpenFile is decremented and, if zero,
-      -- the OpenFile is freed.  If the OpenFile is freed, then the
-      -- "numberOfUsers" for the FCB is decremented.  If it too is zero, the
-      -- FCB is freed.
-      --
-      method Close (open: ptr to OpenFile)
-          var fcb: ptr to FileControlBlock
-          if open == & serialTerminalFile
-            return
-          endIf
-          fileManagerLock.Lock()
-          fileManager.Flush (open)
-          fcb = open.fcb
-          open.numberOfUsers = open.numberOfUsers - 1
-          if open.numberOfUsers <= 0
-            openFileFreeList.AddToEnd (open)
-            anOpenFileBecameFree.Signal (& fileManagerLock)
-            fcb.numberOfUsers = fcb.numberOfUsers - 1
-            if fcb.numberOfUsers <= 0
-              fcbFreeList.AddToEnd (fcb)
-              anFCBBecameFree.Signal (& fileManagerLock)
-            endIf
-          endIf
-          fileManagerLock.Unlock()
-        endMethod
-
-      ----------  FileManager . Flush  ----------
-
-      method Flush (open: ptr to OpenFile)
-        --
-        -- This method writes out the buffer, if it is dirty.  This method
-        -- assumes the caller already holds the fileManagerLock.
-        --
-          if open.fcb.bufferIsDirty
-            if open.fcb.relativeSectorInBuffer < 0
-              FatalError ("FileManager.Flush: buffer is dirty but relativeSectorInBuffer =  -1")
-            endIf
-            open.fcb.bufferIsDirty = false
-            diskDriver.SynchWriteSector (
-                       open.fcb.relativeSectorInBuffer+open.fcb.startingSectorOfFile,
-                       1,
-                       open.fcb.bufferPtr)
-          endIf
-        endMethod
-
-      ----------  FileManager . SynchRead  ----------
-
-      method SynchRead (open: ptr to OpenFile, 
-                        targetAddr, bytePos, numBytes: int) returns bool
+          ----------  FileManager . Close  ----------
           --
-          -- This method reads "numBytes" from this file and stores
-          -- them at the address pointed to by "targetAddr".  If everything
-          -- was read okay, it returns TRUE; if problems it returns FALSE.
+          -- This method is called to close an OpenFile.  If there is a pending
+          -- write (i.e., the buffer is dirty) then it is written out first.
           --
-          -- It reads a page at a time into an internal buffer
-          -- by calling "diskDriver.SynchReadSector".
+          -- The "numberOfUsers" for the OpenFile is decremented and, if zero,
+          -- the OpenFile is freed.  If the OpenFile is freed, then the
+          -- "numberOfUsers" for the FCB is decremented.  If it too is zero, the
+          -- FCB is freed.
           --
-          var sector, offset, posInBuffer, bytesToMove: int
-              fcb: ptr to FileControlBlock
-          -- printHexVar ("SynchRead called  targetAddr", targetAddr)
-          -- printIntVar ("                  bytePos", bytePos)
-          -- printIntVar ("                  numBytes", numBytes)
-          fileManagerLock.Lock()
-          if ! open || ! open.fcb || open.fcb.startingSectorOfFile < 0
-            FatalError ("FileManager.SynchRead: file not properly opened")
-          endIf
-          fcb = open.fcb
-          while numBytes > 0
-            -- At this point targetAddr and numBytes tell what work is left to do.
-            -- printHexVar ("NEXT MOVE:\n  targetAddr", targetAddr)
-            -- printIntVar ("  numBytes", numBytes)
-            -- printHexVar ("          ", numBytes)
-            -- printIntVar ("  startingSectorOfFile", fcb.startingSectorOfFile)
-            -- printIntVar ("  relativeSectorInBuffer", fcb.relativeSectorInBuffer)
-            -- printIntVar ("  bytePos", bytePos)
-            -- printHexVar ("         ", bytePos)
-            sector = bytePos / PAGE_SIZE
-            offset = bytePos % PAGE_SIZE
-            -- printIntVar ("  sector", sector)
-            -- printIntVar ("  offset", offset)
-            -- printHexVar ("        ", offset)
-            if fcb.relativeSectorInBuffer != sector
-              self.Flush (open)
-              -- printIntVar ("  READING SECTOR", sector+startingSectorOfFile)
-              diskDriver.SynchReadSector (sector + fcb.startingSectorOfFile,
-                                           1,
-                                           fcb.bufferPtr)
-              fcb.relativeSectorInBuffer = sector
-              fcb.bufferIsDirty = false    -- (This is unnecessary since Flush does it)
-            endIf
-            posInBuffer = fcb.bufferPtr + offset
-            bytesToMove = Min (numBytes, PAGE_SIZE - offset)
-            -- printHexVar ("  MOVING - targetAddr", targetAddr)
-            -- printHexVar ("         - source addr (posInBuffer)", posInBuffer)
-            -- printIntVar ("         - bytesToMove", bytesToMove)
-            MemoryCopy (targetAddr, posInBuffer, bytesToMove)
-            targetAddr = targetAddr + bytesToMove
-            bytePos = bytePos + bytesToMove
-            numBytes = numBytes - bytesToMove
-            -- printHexVar ("  NEW targetAddr", targetAddr)
-            -- printIntVar ("  NEW bytePos", bytePos)
-            -- printHexVar ("             ", bytePos)
-            -- printIntVar ("  NEW numBytes", numBytes)
-            -- printHexVar ("              ", numBytes)
-          endWhile
-          fileManagerLock.Unlock()
-          return true
-        endMethod
+          method Close (open: ptr to OpenFile)
+              var fcb: ptr to FileControlBlock
+              if open == & serialTerminalFile
+                return
+              endIf
+              fileManagerLock.Lock()
+              fileManager.Flush (open)
+              fcb = open.fcb
+              open.numberOfUsers = open.numberOfUsers - 1
+              if open.numberOfUsers <= 0
+                openFileFreeList.AddToEnd (open)
+                anOpenFileBecameFree.Signal (& fileManagerLock)
+                fcb.numberOfUsers = fcb.numberOfUsers - 1
+                if fcb.numberOfUsers <= 0
+                  fcbFreeList.AddToEnd (fcb)
+                  anFCBBecameFree.Signal (& fileManagerLock)
+                endIf
+              endIf
+              fileManagerLock.Unlock()
+            endMethod
 
-      ----------  FileManager . SynchWrite  ----------
+          ----------  FileManager . Flush  ----------
 
-      method SynchWrite (open: ptr to OpenFile, 
-                         sourceAddr, bytePos, numBytes: int) returns bool
+          method Flush (open: ptr to OpenFile)
+            --
+            -- This method writes out the buffer, if it is dirty.  This method
+            -- assumes the caller already holds the fileManagerLock.
+            --
+              if open.fcb.bufferIsDirty
+                if open.fcb.relativeSectorInBuffer < 0
+                  FatalError ("FileManager.Flush: buffer is dirty but relativeSectorInBuffer =  -1")
+                endIf
+                open.fcb.bufferIsDirty = false
+                diskDriver.SynchWriteSector (
+                           open.fcb.relativeSectorInBuffer+open.fcb.startingSectorOfFile,
+                           1,
+                           open.fcb.bufferPtr)
+              endIf
+            endMethod
+
+          ----------  FileManager . SynchRead  ----------
+
+          method SynchRead (open: ptr to OpenFile,
+                            targetAddr, bytePos, numBytes: int) returns bool
+              --
+              -- This method reads "numBytes" from this file and stores
+              -- them at the address pointed to by "targetAddr".  If everything
+              -- was read okay, it returns TRUE; if problems it returns FALSE.
+              --
+              -- It reads a page at a time into an internal buffer
+              -- by calling "diskDriver.SynchReadSector".
+              --
+              var sector, offset, posInBuffer, bytesToMove: int
+                  fcb: ptr to FileControlBlock
+              -- printHexVar ("SynchRead called  targetAddr", targetAddr)
+              -- printIntVar ("                  bytePos", bytePos)
+              -- printIntVar ("                  numBytes", numBytes)
+              fileManagerLock.Lock()
+              if ! open || ! open.fcb || open.fcb.startingSectorOfFile < 0
+                FatalError ("FileManager.SynchRead: file not properly opened")
+              endIf
+              fcb = open.fcb
+              while numBytes > 0
+                -- At this point targetAddr and numBytes tell what work is left to do.
+                -- printHexVar ("NEXT MOVE:\n  targetAddr", targetAddr)
+                -- printIntVar ("  numBytes", numBytes)
+                -- printHexVar ("          ", numBytes)
+                -- printIntVar ("  startingSectorOfFile", fcb.startingSectorOfFile)
+                -- printIntVar ("  relativeSectorInBuffer", fcb.relativeSectorInBuffer)
+                -- printIntVar ("  bytePos", bytePos)
+                -- printHexVar ("         ", bytePos)
+                sector = bytePos / PAGE_SIZE
+                offset = bytePos % PAGE_SIZE
+                -- printIntVar ("  sector", sector)
+                -- printIntVar ("  offset", offset)
+                -- printHexVar ("        ", offset)
+                if fcb.relativeSectorInBuffer != sector
+                  self.Flush (open)
+                  -- printIntVar ("  READING SECTOR", sector+startingSectorOfFile)
+                  diskDriver.SynchReadSector (sector + fcb.startingSectorOfFile,
+                                               1,
+                                               fcb.bufferPtr)
+                  fcb.relativeSectorInBuffer = sector
+                  fcb.bufferIsDirty = false    -- (This is unnecessary since Flush does it)
+                endIf
+                posInBuffer = fcb.bufferPtr + offset
+                bytesToMove = Min (numBytes, PAGE_SIZE - offset)
+                -- printHexVar ("  MOVING - targetAddr", targetAddr)
+                -- printHexVar ("         - source addr (posInBuffer)", posInBuffer)
+                -- printIntVar ("         - bytesToMove", bytesToMove)
+                MemoryCopy (targetAddr, posInBuffer, bytesToMove)
+                targetAddr = targetAddr + bytesToMove
+                bytePos = bytePos + bytesToMove
+                numBytes = numBytes - bytesToMove
+                -- printHexVar ("  NEW targetAddr", targetAddr)
+                -- printIntVar ("  NEW bytePos", bytePos)
+                -- printHexVar ("             ", bytePos)
+                -- printIntVar ("  NEW numBytes", numBytes)
+                -- printHexVar ("              ", numBytes)
+              endWhile
+              fileManagerLock.Unlock()
+              return true
+            endMethod
+
+          ----------  FileManager . SynchWrite  ----------
+
+          method SynchWrite (open: ptr to OpenFile,
+                             sourceAddr, bytePos, numBytes: int) returns bool
+              --
+              -- This method reads "numBytes" from the memory address "sourceAddr"
+              -- and writes them to the file at "bytePos".  If everything
+              -- was written okay, it returns TRUE; if problems it returns FALSE.
+              --
+              -- It operates on an internal buffer by calling
+              -- "diskDriver.SynchReadSector" and "diskDriver.SynchWriteSector".
+              --
+              var sector, offset, posInBuffer, bytesToMove: int
+                  fcb: ptr to FileControlBlock
+              -- print ("--------------------\n")
+              -- printHexVar ("SynchWrite called  sourceAddr", sourceAddr)
+              -- printIntVar ("                   bytePos", bytePos)
+              -- printIntVar ("                   numBytes", numBytes)
+              fileManagerLock.Lock()
+              if ! open || ! open.fcb || open.fcb.startingSectorOfFile < 0
+                FatalError ("FileManager.SynchWrite: file not properly opened")
+              endIf
+              fcb = open.fcb
+              while numBytes > 0
+                -- At this point sourceAddr and numBytes tell what work is left to do.
+                -- printHexVar ("NEXT MOVE:\n  sourceAddr", sourceAddr)
+                -- printIntVar ("  numBytes", numBytes)
+                -- printHexVar ("          ", numBytes)
+                -- printIntVar ("  startingSectorOfFile", fcb.startingSectorOfFile)
+                -- printIntVar ("  relativeSectorInBuffer", fcb.relativeSectorInBuffer)
+                -- printIntVar ("  bytePos", bytePos)
+                -- printHexVar ("         ", bytePos)
+                sector = bytePos / PAGE_SIZE
+                offset = bytePos % PAGE_SIZE
+                -- printIntVar ("  sector", sector)
+                -- printIntVar ("  offset", offset)
+                -- printHexVar ("        ", offset)
+                if fcb.relativeSectorInBuffer != sector
+                  -- print ("  calling flush\n")
+                  self.Flush (open)
+                endIf
+                posInBuffer = fcb.bufferPtr + offset
+                bytesToMove = Min (numBytes, PAGE_SIZE - offset)
+                if fcb.relativeSectorInBuffer == sector
+                  -- No need to read the sector first
+                elseIf offset == 0 && bytesToMove == PAGE_SIZE
+                  -- No need to read the sector first
+                else
+                  -- printIntVar ("  READING SECTOR", sector + fcb.startingSectorOfFile)
+                  diskDriver.SynchReadSector (sector + fcb.startingSectorOfFile,
+                                               1,
+                                               fcb.bufferPtr)
+                endIf
+                fcb.relativeSectorInBuffer = sector
+                fcb.bufferIsDirty = true
+                -- printHexVar ("  MOVING - sourceAddr", sourceAddr)
+                -- printHexVar ("         - target (posInBuffer)", posInBuffer)
+                -- printIntVar ("         - bytesToMove", bytesToMove)
+                MemoryCopy (posInBuffer, sourceAddr, bytesToMove)
+                sourceAddr = sourceAddr + bytesToMove
+                bytePos = bytePos + bytesToMove
+                numBytes = numBytes - bytesToMove
+                -- printHexVar ("  NEW sourceAddr", sourceAddr)
+                -- printIntVar ("  NEW bytePos", bytePos)
+                -- printHexVar ("             ", bytePos)
+                -- printIntVar ("  NEW numBytes", numBytes)
+                -- printHexVar ("              ", numBytes)
+              endWhile
+              fileManagerLock.Unlock()
+              -- print ("--------------------\n")
+              return true
+            endMethod
+
+        endBehavior
+
+      function copyUnalignedWord (destPtr, fromPtr: ptr to int)
+          var from, dest: ptr to char
+          from = fromPtr asPtrTo char
+          dest = destPtr asPtrTo char
+          *dest = *from
+          *(dest+1) = *(from+1)
+          *(dest+2) = *(from+2)
+          *(dest+3) = *(from+3)
+        endFunction
+
+      function printFCB (fcb: ptr to FileControlBlock)
+          printInt (fcb.fcbID)
+          printChar (' ')
+        endFunction
+
+      function printOpen (open: ptr to OpenFile)
+          print ("  0x")
+          printHex (open asInteger)
+          print (":  ")
+          open.Print ()
+        endFunction
+
+    -----------------------------  FileControlBlock  ---------------------------------
+
+      behavior FileControlBlock
+
+          ----------  FileControlBlock . Init  ----------
           --
-          -- This method reads "numBytes" from the memory address "sourceAddr"
-          -- and writes them to the file at "bytePos".  If everything
-          -- was written okay, it returns TRUE; if problems it returns FALSE.
+          -- This method is called once at startup time.  It preallocates a buffer
+          -- in memory which may be needed when I/O is done on the file.
           --
-          -- It operates on an internal buffer by calling
-          -- "diskDriver.SynchReadSector" and "diskDriver.SynchWriteSector".
-          --
-          var sector, offset, posInBuffer, bytesToMove: int
-              fcb: ptr to FileControlBlock
-          -- print ("--------------------\n")
-          -- printHexVar ("SynchWrite called  sourceAddr", sourceAddr)
-          -- printIntVar ("                   bytePos", bytePos)
-          -- printIntVar ("                   numBytes", numBytes)
-          fileManagerLock.Lock()
-          if ! open || ! open.fcb || open.fcb.startingSectorOfFile < 0
-            FatalError ("FileManager.SynchWrite: file not properly opened")
-          endIf
-          fcb = open.fcb
-          while numBytes > 0
-            -- At this point sourceAddr and numBytes tell what work is left to do.
-            -- printHexVar ("NEXT MOVE:\n  sourceAddr", sourceAddr)
-            -- printIntVar ("  numBytes", numBytes)
-            -- printHexVar ("          ", numBytes)
-            -- printIntVar ("  startingSectorOfFile", fcb.startingSectorOfFile)
-            -- printIntVar ("  relativeSectorInBuffer", fcb.relativeSectorInBuffer)
-            -- printIntVar ("  bytePos", bytePos)
-            -- printHexVar ("         ", bytePos)
-            sector = bytePos / PAGE_SIZE
-            offset = bytePos % PAGE_SIZE
-            -- printIntVar ("  sector", sector)
-            -- printIntVar ("  offset", offset)
-            -- printHexVar ("        ", offset)
-            if fcb.relativeSectorInBuffer != sector
-              -- print ("  calling flush\n")
-              self.Flush (open)
-            endIf
-            posInBuffer = fcb.bufferPtr + offset
-            bytesToMove = Min (numBytes, PAGE_SIZE - offset)
-            if fcb.relativeSectorInBuffer == sector
-              -- No need to read the sector first
-            elseIf offset == 0 && bytesToMove == PAGE_SIZE
-              -- No need to read the sector first
-            else
-              -- printIntVar ("  READING SECTOR", sector + fcb.startingSectorOfFile)
-              diskDriver.SynchReadSector (sector + fcb.startingSectorOfFile,
-                                           1,
-                                           fcb.bufferPtr)
-            endIf
-            fcb.relativeSectorInBuffer = sector
-            fcb.bufferIsDirty = true
-            -- printHexVar ("  MOVING - sourceAddr", sourceAddr)
-            -- printHexVar ("         - target (posInBuffer)", posInBuffer)
-            -- printIntVar ("         - bytesToMove", bytesToMove)
-            MemoryCopy (posInBuffer, sourceAddr, bytesToMove)
-            sourceAddr = sourceAddr + bytesToMove
-            bytePos = bytePos + bytesToMove
-            numBytes = numBytes - bytesToMove
-            -- printHexVar ("  NEW sourceAddr", sourceAddr)
-            -- printIntVar ("  NEW bytePos", bytePos)
-            -- printHexVar ("             ", bytePos)
-            -- printIntVar ("  NEW numBytes", numBytes)
-            -- printHexVar ("              ", numBytes)
-          endWhile
-          fileManagerLock.Unlock()
-          -- print ("--------------------\n")
-          return true
-        endMethod
+          method Init ()
+              numberOfUsers = 0
+              bufferPtr = frameManager.GetAFrame ()
+              relativeSectorInBuffer = -1
+              bufferIsDirty = false
+              startingSectorOfFile = -1
+             endMethod
 
-    endBehavior
+          ----------  FileControlBlock . Print  ----------
 
-  function copyUnalignedWord (destPtr, fromPtr: ptr to int)
-      var from, dest: ptr to char
-      from = fromPtr asPtrTo char
-      dest = destPtr asPtrTo char
-      *dest = *from
-      *(dest+1) = *(from+1)
-      *(dest+2) = *(from+2)
-      *(dest+3) = *(from+3)
-    endFunction
+          method Print ()
+              print ("fcbID=")
+              printInt (fcbID)
+              print (",  numberOfUsers=")
+              printInt (numberOfUsers)
+              print (",  startingSector=")
+              printInt (startingSectorOfFile)
+              print (",  sizeOfFileInBytes=")
+              printInt (sizeOfFileInBytes)
+              print (",  bufferPtr=")
+              printHex (bufferPtr)
+              print (",  relativeSectorInBuffer=")
+              printInt (relativeSectorInBuffer)
+              nl ()
+            endMethod
 
-  function printFCB (fcb: ptr to FileControlBlock)
-      printInt (fcb.fcbID)
-      printChar (' ')
-    endFunction
+        endBehavior
 
-  function printOpen (open: ptr to OpenFile)
-      print ("  0x")
-      printHex (open asInteger)
-      print (":  ")
-      open.Print ()
-    endFunction
+    -----------------------------  OpenFile  ---------------------------------
 
------------------------------  FileControlBlock  ---------------------------------
+      behavior OpenFile
 
-  behavior FileControlBlock
+          ----------  OpenFile . Print  ----------
 
-      ----------  FileControlBlock . Init  ----------
-      --
-      -- This method is called once at startup time.  It preallocates a buffer
-      -- in memory which may be needed when I/O is done on the file.
-      --
-      method Init ()
-          numberOfUsers = 0
-          bufferPtr = frameManager.GetAFrame ()
-          relativeSectorInBuffer = -1
-          bufferIsDirty = false
-          startingSectorOfFile = -1
-         endMethod
+          method Print ()
+              print ("    OPEN FILE:   currentPos=")
+              printInt (currentPos)
+              print (", fcb=")
+              if fcb
+                fcb.Print ()
+              else
+                print ("null\n")
+              endIf
+            endMethod
 
-      ----------  FileControlBlock . Print  ----------
+          ----------  OpenFile . ReadBytes  ----------
 
-      method Print ()
-          print ("fcbID=")
-          printInt (fcbID)
-          print (",  numberOfUsers=")
-          printInt (numberOfUsers)
-          print (",  startingSector=")
-          printInt (startingSectorOfFile)
-          print (",  sizeOfFileInBytes=")
-          printInt (sizeOfFileInBytes)
-          print (",  bufferPtr=")
-          printHex (bufferPtr)
-          print (",  relativeSectorInBuffer=")
-          printInt (relativeSectorInBuffer)
-          nl ()
-        endMethod
+          method ReadBytes (targetAddr, numBytes: int) returns bool
+              --
+              -- This method reads "numBytes" from this file and stores
+              -- them at the address pointed to by "targetAddr".  If everything
+              -- was read okay, it returns TRUE; if problems it returns FALSE.
+              --
+              -- This method may block the caller.  This method is reentrant.
+              --
+              var pos: int
+              -- printIntVar ("OpenFile.ReadBytes    currentPos", currentPos)
+              fileManager.fileManagerLock.Lock ()
+              pos = currentPos
+              currentPos = currentPos + numBytes
+              fileManager.fileManagerLock.Unlock ()
+              return fileManager.SynchRead (self, targetAddr, pos, numBytes)
+            endMethod
 
-    endBehavior
+          ----------  OpenFile . ReadInt  ----------
 
------------------------------  OpenFile  ---------------------------------
+          method ReadInt () returns int
+              --
+              -- Read the next 4 bytes from a file and return it as an integer.
+              --
+              var i: int
+              if ! self.ReadBytes ((&i) asInteger, 4)
+                FatalError ("Within ReadInt: ReadBytes failed")
+              endIf
+              return i
+            endMethod
 
-  behavior OpenFile
+          ----------  OpenFile . LoadExecutable  ----------
 
-      ----------  OpenFile . Print  ----------
+          method LoadExecutable (addrSpace: ptr to AddrSpace) returns int
+            --
+            -- This method reads an executable "a.out" file from the disk, creates
+            -- a virtual address space (with all pages resident in memory), and
+            -- loads the executable program into the new address space.
+            --
+            -- The virtual address space will consist of (in this order):
+            --     The environment page(s)     see NUMBER_OF_ENVIRONMENT_PAGES
+            --     The text page(s)
+            --     The data page(s)
+            --     The bss page(s)
+            --     The stack page(s)           see USER_STACK_SIZE_IN_PAGES
+            --
+            -- The given "addrSpace" is assumed to be empty; this method will
+            -- allocate new frames and initialize the page table.
+            --
+            -- If all is okay, this method returns the initial PC, which will be
+            -- the address of the first word of the first text page.
+            --
+            -- If any problems arise, this method returns -1.
+            --
+              var nextVirtPage, addr: int
+                  textSize, dataSize, bssSize, textStart, dataStart, bssStart: int
+                  i, textSizeInPages, dataSizeInPages, bssSizeInPages: int
 
-      method Print ()
-          print ("    OPEN FILE:   currentPos=")
-          printInt (currentPos)
-          print (", fcb=")
-          if fcb
-            fcb.Print ()
-          else
-            print ("null\n")
-          endIf
-        endMethod
+              -- Make sure this address space is empty...
+              if addrSpace.numberOfPages != 0
+                FatalError ("LoadExecutable: This virtual address space is not empty")
+              endIf
 
-      ----------  OpenFile . ReadBytes  ----------
+              -- Read and check the magic number...
+              if  self.ReadInt () != 0x424C5A78    -- in ASCII: "BLZx"
+                print ("LoadExecutable: Bad magic number\n")
+                return -1
+              endIf
 
-      method ReadBytes (targetAddr, numBytes: int) returns bool
-          --
-          -- This method reads "numBytes" from this file and stores
-          -- them at the address pointed to by "targetAddr".  If everything
-          -- was read okay, it returns TRUE; if problems it returns FALSE.
-          --
-          -- This method may block the caller.  This method is reentrant.
-          --
-          var pos: int
-          -- printIntVar ("OpenFile.ReadBytes    currentPos", currentPos)
-          fileManager.fileManagerLock.Lock ()
-          pos = currentPos
-          currentPos = currentPos + numBytes
-          fileManager.fileManagerLock.Unlock ()
-          return fileManager.SynchRead (self, targetAddr, pos, numBytes)
-        endMethod
+              -- Read in the header info...
+              textSize = self.ReadInt ()
+              dataSize = self.ReadInt ()
+              bssSize = self.ReadInt ()
+              textStart = self.ReadInt ()
+              dataStart = self.ReadInt ()
+              bssStart = self.ReadInt ()
 
-      ----------  OpenFile . ReadInt  ----------
+              -- Compute the size of the text segment in pages...
+              if textSize % PAGE_SIZE != 0
+                print ("LoadExecutable: The text segment size not a multiple of page size\n")
+                return -1
+              endIf
+              textSizeInPages = textSize / PAGE_SIZE
 
-      method ReadInt () returns int
-          --
-          -- Read the next 4 bytes from a file and return it as an integer.
-          --
-          var i: int
-          if ! self.ReadBytes ((&i) asInteger, 4)
-            FatalError ("Within ReadInt: ReadBytes failed")
-          endIf
-          return i
-        endMethod
+              -- Environment pages are filled in by the OS; make sure the executable
+              -- and the OS agree about how many there are to be...
+              if textStart != NUMBER_OF_ENVIRONMENT_PAGES * PAGE_SIZE
+                print ("LoadExecutable: The environment size does not match the 'loadAddr' info supplied to the linker\n")
+                return -1
+              endIf
 
-      ----------  OpenFile . LoadExecutable  ----------
+              -- Compute the size of the data segment in pages...
+              if dataSize % PAGE_SIZE != 0
+                print ("LoadExecutable: The data segment size not a multiple of page size\n")
+                return -1
+              endIf
+              if dataStart != textStart + textSize
+                print ("LoadExecutable: dataStart != textStart + textSize\n")
+                return -1
+              endIf
+              dataSizeInPages = dataSize / PAGE_SIZE
 
-      method LoadExecutable (addrSpace: ptr to AddrSpace) returns int
-        --
-        -- This method reads an executable "a.out" file from the disk, creates
-        -- a virtual address space (with all pages resident in memory), and
-        -- loads the executable program into the new address space.
-        --
-        -- The virtual address space will consist of (in this order):
-        --     The environment page(s)     see NUMBER_OF_ENVIRONMENT_PAGES
-        --     The text page(s)
-        --     The data page(s)
-        --     The bss page(s)
-        --     The stack page(s)           see USER_STACK_SIZE_IN_PAGES
-        --
-        -- The given "addrSpace" is assumed to be empty; this method will
-        -- allocate new frames and initialize the page table.
-        --
-        -- If all is okay, this method returns the initial PC, which will be
-        -- the address of the first word of the first text page.
-        --
-        -- If any problems arise, this method returns -1.
-        --
-          var nextVirtPage, addr: int
-              textSize, dataSize, bssSize, textStart, dataStart, bssStart: int
-              i, textSizeInPages, dataSizeInPages, bssSizeInPages: int
- 
-          -- Make sure this address space is empty...
-          if addrSpace.numberOfPages != 0
-            FatalError ("LoadExecutable: This virtual address space is not empty")
-          endIf
-         
-          -- Read and check the magic number...
-          if  self.ReadInt () != 0x424C5A78    -- in ASCII: "BLZx"
-            print ("LoadExecutable: Bad magic number\n")
-            return -1
-          endIf
+              -- Compute the size of the bss segment in pages...
+              if bssSize % PAGE_SIZE != 0
+                print ("LoadExecutable: The bss segment size not a multiple of page size\n")
+                return -1
+              endIf
+              if bssStart != dataStart + dataSize
+                print ("LoadExecutable: bssStart != dataStart + dataSize\n")
+                return -1
+              endIf
+              bssSizeInPages = bssSize / PAGE_SIZE
 
-          -- Read in the header info...
-          textSize = self.ReadInt ()
-          dataSize = self.ReadInt ()
-          bssSize = self.ReadInt ()
-          textStart = self.ReadInt ()
-          dataStart = self.ReadInt ()
-          bssStart = self.ReadInt ()
+              -- Compute how many pages to put into the address space...
+              i = textSizeInPages + dataSizeInPages + bssSizeInPages +
+                  USER_STACK_SIZE_IN_PAGES + NUMBER_OF_ENVIRONMENT_PAGES
 
-          -- Compute the size of the text segment in pages...
-          if textSize % PAGE_SIZE != 0
-            print ("LoadExecutable: The text segment size not a multiple of page size\n")
-            return -1
-          endIf
-          textSizeInPages = textSize / PAGE_SIZE
+              /*****
+              printIntVar ("NUMBER_OF_ENVIRONMENT_PAGES", NUMBER_OF_ENVIRONMENT_PAGES)
+              printIntVar ("USER_STACK_SIZE_IN_PAGES", USER_STACK_SIZE_IN_PAGES)
+              printIntVar ("textSizeInPages", textSizeInPages)
+              printIntVar ("dataSizeInPages", dataSizeInPages)
+              printIntVar ("bssSizeInPages", bssSizeInPages)
+              printIntVar ("addrSpace.numberOfPages", addrSpace.numberOfPages)
+              printIntVar ("Number of pages in this address space", i)
+              printIntVar ("MAX_PAGES_PER_VIRT_SPACE", MAX_PAGES_PER_VIRT_SPACE)
+              *****/
 
-          -- Environment pages are filled in by the OS; make sure the executable
-          -- and the OS agree about how many there are to be...
-          if textStart != NUMBER_OF_ENVIRONMENT_PAGES * PAGE_SIZE
-            print ("LoadExecutable: The environment size does not match the 'loadAddr' info supplied to the linker\n")
-            return -1
-          endIf
+              -- Allocate the frames...
+              if i > MAX_PAGES_PER_VIRT_SPACE
+                print ("LoadExecutable: This virtual address space exceeds the limit\n")
+                printIntVar ("LoadExecutable: Number of pages in this address space", i)
+                printIntVar ("LoadExecutable: MAX_PAGES_PER_VIRT_SPACE", MAX_PAGES_PER_VIRT_SPACE)
+                return -1
+              endIf
+              frameManager.GetNewFrames (addrSpace, i)
 
-          -- Compute the size of the data segment in pages...
-          if dataSize % PAGE_SIZE != 0
-            print ("LoadExecutable: The data segment size not a multiple of page size\n")
-            return -1
-          endIf
-          if dataStart != textStart + textSize
-            print ("LoadExecutable: dataStart != textStart + textSize\n")
-            return -1
-          endIf
-          dataSizeInPages = dataSize / PAGE_SIZE
+              -- print ("LoadExecutable: The address space just allocated...\n")
+              -- addrSpace.Print ()
 
-          -- Compute the size of the bss segment in pages...
-          if bssSize % PAGE_SIZE != 0
-            print ("LoadExecutable: The bss segment size not a multiple of page size\n")
-            return -1
-          endIf
-          if bssStart != dataStart + dataSize
-            print ("LoadExecutable: bssStart != dataStart + dataSize\n")
-            return -1
-          endIf
-          bssSizeInPages = bssSize / PAGE_SIZE
+              -- Read and check the separator...
+              if  self.ReadInt () != 0x2a2a2a2a
+                print ("LoadExecutable: Invalid file format - missing separator (1)\n")
+                frameManager.ReturnAllFrames (addrSpace)
+                return -1
+              endIf
 
-          -- Compute how many pages to put into the address space...
-          i = textSizeInPages + dataSizeInPages + bssSizeInPages +
-              USER_STACK_SIZE_IN_PAGES + NUMBER_OF_ENVIRONMENT_PAGES
+              -- Read the text segment...
+              nextVirtPage = textStart / PAGE_SIZE
+              for i = 1 to textSizeInPages
+                addr = addrSpace.ExtractFrameAddr (nextVirtPage)
+                -- printIntVar ("About to read; nextVirtPage", nextVirtPage)
+                -- printHexVar ("               addr", addr)
+                if ! self.ReadBytes (addr, PAGE_SIZE)
+                  print ("LoadExecutable: Problems reading from file (text)\n")
+                  frameManager.ReturnAllFrames (addrSpace)
+                  return -1
+                endIf
+                addrSpace.ClearWritable (nextVirtPage)
+                nextVirtPage = nextVirtPage + 1
+              endFor
 
-          /*****
-          printIntVar ("NUMBER_OF_ENVIRONMENT_PAGES", NUMBER_OF_ENVIRONMENT_PAGES)
-          printIntVar ("USER_STACK_SIZE_IN_PAGES", USER_STACK_SIZE_IN_PAGES)
-          printIntVar ("textSizeInPages", textSizeInPages)
-          printIntVar ("dataSizeInPages", dataSizeInPages)
-          printIntVar ("bssSizeInPages", bssSizeInPages)
-          printIntVar ("addrSpace.numberOfPages", addrSpace.numberOfPages)
-          printIntVar ("Number of pages in this address space", i)
-          printIntVar ("MAX_PAGES_PER_VIRT_SPACE", MAX_PAGES_PER_VIRT_SPACE)
-          *****/
+              -- Read and check the separator...
+              if  self.ReadInt () != 0x2a2a2a2a
+                print ("LoadExecutable: Invalid file format - missing separator (2)\n")
+                frameManager.ReturnAllFrames (addrSpace)
+                return -1
+              endIf
 
-          -- Allocate the frames...
-          if i > MAX_PAGES_PER_VIRT_SPACE
-            print ("LoadExecutable: This virtual address space exceeds the limit\n")
-            printIntVar ("LoadExecutable: Number of pages in this address space", i)
-            printIntVar ("LoadExecutable: MAX_PAGES_PER_VIRT_SPACE", MAX_PAGES_PER_VIRT_SPACE)
-            return -1
-          endIf
-          frameManager.GetNewFrames (addrSpace, i)
+              -- Read the data segment...
+              for i = 1 to dataSizeInPages
+                addr = addrSpace.ExtractFrameAddr (nextVirtPage)
+                -- printIntVar ("About to read; nextVirtPage", nextVirtPage)
+                -- printHexVar ("               addr", addr)
+                if ! self.ReadBytes (addr, PAGE_SIZE)
+                  print ("LoadExecutable: Problems reading from file (text)\n")
+                  frameManager.ReturnAllFrames (addrSpace)
+                  return -1
+                endIf
+                nextVirtPage = nextVirtPage + 1
+              endFor
 
-          -- print ("LoadExecutable: The address space just allocated...\n")
-          -- addrSpace.Print ()
+              -- Read and check the separator...
+              if  self.ReadInt () != 0x2a2a2a2a
+                print ("LoadExecutable: Invalid file format - missing separator (3)\n")
+                frameManager.ReturnAllFrames (addrSpace)
+                return -1
+              endIf
 
-          -- Read and check the separator...
-          if  self.ReadInt () != 0x2a2a2a2a
-            print ("LoadExecutable: Invalid file format - missing separator (1)\n")
-            frameManager.ReturnAllFrames (addrSpace)
-            return -1
-          endIf
+              -- Zero out the bss segment...
+              addr = addrSpace.ExtractFrameAddr (nextVirtPage)
+              -- printIntVar ("About to zero bss segment; page", nextVirtPage)
+              -- printHexVar ("                           addr", addr)
+              -- printHexVar ("                           bssSizeInBytes", bssSize)
+              MemoryZero (addr, bssSize)
 
-          -- Read the text segment...
-          nextVirtPage = textStart / PAGE_SIZE
-          for i = 1 to textSizeInPages
-            addr = addrSpace.ExtractFrameAddr (nextVirtPage)
-            -- printIntVar ("About to read; nextVirtPage", nextVirtPage)
-            -- printHexVar ("               addr", addr)
-            if ! self.ReadBytes (addr, PAGE_SIZE)
-              print ("LoadExecutable: Problems reading from file (text)\n")
-              frameManager.ReturnAllFrames (addrSpace)
-              return -1
-            endIf
-            addrSpace.ClearWritable (nextVirtPage)
-            nextVirtPage = nextVirtPage + 1
-          endFor
+              -- User programs begin execution at the first word of the text segment...
+              return textStart
+            endMethod
 
-          -- Read and check the separator...
-          if  self.ReadInt () != 0x2a2a2a2a
-            print ("LoadExecutable: Invalid file format - missing separator (2)\n")
-            frameManager.ReturnAllFrames (addrSpace)
-            return -1
-          endIf
-
-          -- Read the data segment...
-          for i = 1 to dataSizeInPages
-            addr = addrSpace.ExtractFrameAddr (nextVirtPage)
-            -- printIntVar ("About to read; nextVirtPage", nextVirtPage)
-            -- printHexVar ("               addr", addr)
-            if ! self.ReadBytes (addr, PAGE_SIZE)
-              print ("LoadExecutable: Problems reading from file (text)\n")
-              frameManager.ReturnAllFrames (addrSpace)
-              return -1
-            endIf
-            nextVirtPage = nextVirtPage + 1
-          endFor
-
-          -- Read and check the separator...
-          if  self.ReadInt () != 0x2a2a2a2a
-            print ("LoadExecutable: Invalid file format - missing separator (3)\n")
-            frameManager.ReturnAllFrames (addrSpace)
-            return -1
-          endIf
-
-          -- Zero out the bss segment...
-          addr = addrSpace.ExtractFrameAddr (nextVirtPage)
-          -- printIntVar ("About to zero bss segment; page", nextVirtPage)
-          -- printHexVar ("                           addr", addr)
-          -- printHexVar ("                           bssSizeInBytes", bssSize)
-          MemoryZero (addr, bssSize)
-
-          -- User programs begin execution at the first word of the text segment...
-          return textStart
-        endMethod
-
-  endBehavior
-
+      endBehavior
 endCode

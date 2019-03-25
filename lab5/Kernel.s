@@ -818,8 +818,8 @@ _StringConst_64:
 	.ascii	"fileDesc = "
 	.align
 _StringConst_63:
-	.word	42			! length
-	.ascii	"Handle_Sys_Close invoked by a user thread!"
+	.word	25			! length
+	.ascii	"Handle_Sys_Close invoked!"
 	.align
 _StringConst_62:
 	.word	16			! length
@@ -830,8 +830,8 @@ _StringConst_61:
 	.ascii	"fileDesc = "
 	.align
 _StringConst_60:
-	.word	41			! length
-	.ascii	"Handle_Sys_Seek invoked by a user thread!"
+	.word	24			! length
+	.ascii	"Handle_Sys_Seek invoked!"
 	.align
 _StringConst_59:
 	.word	14			! length
@@ -846,8 +846,8 @@ _StringConst_57:
 	.ascii	"fileDesc = "
 	.align
 _StringConst_56:
-	.word	42			! length
-	.ascii	"Handle_Sys_Write invoked by a user thread!"
+	.word	25			! length
+	.ascii	"Handle_Sys_Write invoked!"
 	.align
 _StringConst_55:
 	.word	14			! length
@@ -862,8 +862,8 @@ _StringConst_53:
 	.ascii	"fileDesc = "
 	.align
 _StringConst_52:
-	.word	41			! length
-	.ascii	"Handle_Sys_Read invoked by a user thread!"
+	.word	24			! length
+	.ascii	"Handle_Sys_Read invoked!"
 	.align
 _StringConst_51:
 	.word	11			! length
@@ -874,8 +874,8 @@ _StringConst_50:
 	.ascii	"virt addr of filename = "
 	.align
 _StringConst_49:
-	.word	41			! length
-	.ascii	"Handle_Sys_Open invoked by a user thread!"
+	.word	24			! length
+	.ascii	"Handle_Sys_Open invoked!"
 	.align
 _StringConst_48:
 	.word	11			! length
@@ -886,24 +886,24 @@ _StringConst_47:
 	.ascii	"virt addr of filename = "
 	.align
 _StringConst_46:
-	.word	43			! length
-	.ascii	"Handle_Sys_Create invoked by a user thread!"
+	.word	26			! length
+	.ascii	"Handle_Sys_Create invoked!"
 	.align
 _StringConst_45:
 	.word	12			! length
 	.ascii	"processID = "
 	.align
 _StringConst_44:
-	.word	41			! length
-	.ascii	"Handle_Sys_Join invoked by a user thread!"
+	.word	24			! length
+	.ascii	"Handle_Sys_Join invoked!"
 	.align
 _StringConst_43:
-	.word	41			! length
-	.ascii	"Handle_Sys_Fork invoked by a user thread!"
+	.word	24			! length
+	.ascii	"Handle_Sys_Fork invoked!"
 	.align
 _StringConst_42:
-	.word	42			! length
-	.ascii	"Handle_Sys_Yield invoked by a user thread!"
+	.word	25			! length
+	.ascii	"Handle_Sys_Yield invoked!"
 	.align
 _StringConst_41:
 	.word	47			! length
@@ -914,8 +914,8 @@ _StringConst_40:
 	.ascii	"returnStatus = "
 	.align
 _StringConst_39:
-	.word	41			! length
-	.ascii	"Handle_Sys_Exit invoked by a user thread!"
+	.word	24			! length
+	.ascii	"Handle_Sys_Exit invoked!"
 	.align
 _StringConst_38:
 	.word	37			! length
