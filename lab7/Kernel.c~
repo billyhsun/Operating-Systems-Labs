@@ -2012,6 +2012,7 @@ endBehavior
 			copiedSoFar = copiedSoFar + chunkSize
 			virtPage = virtPage + 1
 			offset = 0
+
 			if copiedSoFar == sizeInBytes
 				break
 			endIf
@@ -2044,18 +2045,19 @@ endBehavior
 			currentThread.myProcess.addrSpace.SetReferenced(virtPage)
 			currentThread.myProcess.addrSpace.SetDirty(virtPage)
 			destAddr = currentThread.myProcess.addrSpace.ExtractFrameAddr(virtPage) + offset
-			readSuccess = fileManager.SynchRead(openFile, destAddr, nextPosInFile, chunkSize)
+			readSuccess = fileManager.SynchRead(file, destAddr, nextPosInFile, chunkSize)
 
 			nextPosInFile = nextPosInFile + chunkSize
 			copiedSoFar = copiedSoFar + chunkSize
 			virtPage = virtPage + 1
 			offset = 0
+
 			if copiedSoFar == sizeInBytes
 				break
 			endIf
 		endWhile
 
-		openFile.currentPos = nextPosInFile
+		file.currentPos = nextPosInFile
 
 		return copiedSoFar
     endFunction
@@ -2073,7 +2075,7 @@ endBehavior
 			return -1
 		endIf
 
-		-- Check if there is sufficient space
+		-- Check if there is sufficient space (if this part runs to completion)
 		virtAddr = buffer asInteger
 		virtPage = virtAddr / PAGE_SIZE
 		offset = virtAddr % PAGE_SIZE
@@ -2082,8 +2084,74 @@ endBehavior
 		nextPosInFile = file.currentPos
 		fileSize = file.fcb.sizeOfFileInBytes
 
+		copiedSoFar = 0
+		while true
+			chunkSize = PAGE_SIZE - offset
+			if nextPosInFile + chunkSize > fileSize
+				chunkSize = fileSize - nextPosInFile
+			endIf
+			if copiedSoFar + chunkSize > sizeInBytes
+				chunkSize = sizeInBytes - copiedSoFar
+			endIf
+			if chunkSize <= 0
+				break
+			endIf
+			-- Error
+			if virtPage < 0 || virtPage > currentThread.myProcess.addrSpace.numberOfPages-1 || currentThread.myProcess.addrSpace.IsValid(virtPage) == false || currentThread.myProcess.addrSpace.IsWritable(virtPage) == false
+				return -1
+			endIf
+
+			nextPosInFile = nextPosInFile + chunkSize
+			copiedSoFar = copiedSoFar + chunkSize
+			virtPage = virtPage + 1
+			offset = 0
+
+			if copiedSoFar == sizeInBytes
+				break
+			endIf
+		endWhile
 
 
+		-- If no error, now actually write the file
+		virtAddr = buffer asInteger
+		virtPage = virtAddr / PAGE_SIZE
+		offset = virtAddr % PAGE_SIZE
+
+		file = currentThread.myProcess.fileDescriptor[fileDesc]
+		nextPosInFile = file.currentPos
+		fileSize = file.fcb.sizeOfFileInBytes
+
+		copiedSoFar = 0
+		while true
+			chunkSize = PAGE_SIZE - offset
+			if nextPosInFile + chunkSize > fileSize
+				chunkSize = fileSize - nextPosInFile
+			endIf
+			if copiedSoFar + chunkSize > sizeInBytes
+				chunkSize = sizeInBytes - copiedSoFar
+			endIf
+			if chunkSize <= 0
+				break
+			endIf
+
+			-- Write the bytes
+			currentThread.myProcess.addrSpace.SetReferenced(virtPage)
+			destAddr = currentThread.myProcess.addrSpace.ExtractFrameAddr(virtPage) + offset
+			readSuccess = fileManager.SynchWrite(file, destAddr, nextPosInFile, chunkSize)
+
+			nextPosInFile = nextPosInFile + chunkSize
+			copiedSoFar = copiedSoFar + chunkSize
+			virtPage = virtPage + 1
+			offset = 0
+
+			if copiedSoFar == sizeInBytes
+				break
+			endIf
+		endWhile
+
+		file.currentPos = nextPosInFile
+
+		return copiedSoFar
     endFunction
 
 -----------------------------  Handle_Sys_Seek  ---------------------------------

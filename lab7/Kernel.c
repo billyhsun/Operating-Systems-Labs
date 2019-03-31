@@ -2045,7 +2045,7 @@ endBehavior
 			currentThread.myProcess.addrSpace.SetReferenced(virtPage)
 			currentThread.myProcess.addrSpace.SetDirty(virtPage)
 			destAddr = currentThread.myProcess.addrSpace.ExtractFrameAddr(virtPage) + offset
-			readSuccess = fileManager.SynchRead(openFile, destAddr, nextPosInFile, chunkSize)
+			readSuccess = fileManager.SynchRead(file, destAddr, nextPosInFile, chunkSize)
 
 			nextPosInFile = nextPosInFile + chunkSize
 			copiedSoFar = copiedSoFar + chunkSize
@@ -2057,7 +2057,7 @@ endBehavior
 			endIf
 		endWhile
 
-		openFile.currentPos = nextPosInFile
+		file.currentPos = nextPosInFile
 
 		return copiedSoFar
     endFunction
@@ -2137,7 +2137,7 @@ endBehavior
 			-- Write the bytes
 			currentThread.myProcess.addrSpace.SetReferenced(virtPage)
 			destAddr = currentThread.myProcess.addrSpace.ExtractFrameAddr(virtPage) + offset
-			readSuccess = fileManager.SynchWrite(openFile, destAddr, nextPosInFile, chunkSize)
+			readSuccess = fileManager.SynchWrite(file, destAddr, nextPosInFile, chunkSize)
 
 			nextPosInFile = nextPosInFile + chunkSize
 			copiedSoFar = copiedSoFar + chunkSize
@@ -2149,7 +2149,7 @@ endBehavior
 			endIf
 		endWhile
 
-		openFile.currentPos = nextPosInFile
+		file.currentPos = nextPosInFile
 
 		return copiedSoFar
     endFunction
@@ -2182,7 +2182,9 @@ endBehavior
 -----------------------------  Handle_Sys_Close  ---------------------------------
 
   function Handle_Sys_Close (fileDesc: int)
-		if ~(fileDesc < 0 || fileDesc > MAX_FILES_PER_PROCESS-1 || currentThread.myProcess.fileDescriptor[fileDesc] == null)
+		if fileDesc < 0 || fileDesc > MAX_FILES_PER_PROCESS-1 || currentThread.myProcess.fileDescriptor[fileDesc] == null
+			-- pass
+		else
 			fileManager.Close(currentThread.myProcess.fileDescriptor[fileDesc])
 			currentThread.myProcess.fileDescriptor[fileDesc] = null
 		endIf

@@ -219,7 +219,7 @@ header Kernel
       myThread: ptr to Thread       -- Each process has one thread
       exitStatus: int               -- The value passed to Sys_Exit
       addrSpace: AddrSpace          -- The logical address space
-      fileDescriptor: array [MAX_FILES_PER_PROCESS] of ptr to OpenFile
+      -- fileDescriptor: array [MAX_FILES_PER_PROCESS] of ptr to OpenFile
     methods
       Init ()
       Print ()
