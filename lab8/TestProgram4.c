@@ -34,7 +34,7 @@ code TestProgram4
       -- WriteTest2 ()
       -- WriteTest3 ()
       -- WriteTest4 ()
-      WriteTest5 ()
+      -- WriteTest5 ()
       -- ReadTest3 ()
       -- ReadTest4 ()
       -- WriteTest6 ()

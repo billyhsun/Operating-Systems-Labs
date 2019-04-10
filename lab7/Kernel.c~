@@ -13,7 +13,8 @@ code Kernel
 		newThread = threadManager.GetANewThread()	
 		(*newThread).Init("User Program")
 		--(*newThread).Fork(StartUserProcess, "TestProgram1" asInteger)
-		(*newThread).Fork(StartUserProcess, "TestProgram3" asInteger)
+		--(*newThread).Fork(StartUserProcess, "TestProgram3" asInteger)
+		(*newThread).Fork(StartUserProcess, "TestProgram4" asInteger)
 
 
 	endFunction
@@ -32,7 +33,7 @@ code Kernel
 		pcb = processManager.GetANewProcess()
 		pcb.myThread = currentThread
 		currentThread.myProcess = pcb
-		openFilePtr = fileManager.Open("TestProgram3")
+		openFilePtr = fileManager.Open("TestProgram4")
 		entryPoint = (*openFilePtr).LoadExecutable(&(pcb.addrSpace))
 		fileManager.Close(openFilePtr)
 		initUserStack = pcb.addrSpace.numberOfPages*PAGE_SIZE
@@ -822,10 +823,8 @@ code Kernel
           addrSpace = new AddrSpace
           addrSpace.Init ()
 -- Uncomment this code later...
-/*
           fileDescriptor = new array of ptr to OpenFile
                       { MAX_FILES_PER_PROCESS of null }
-*/
         endMethod
 
       ----------  ProcessControlBlock . Print  ----------
@@ -1071,6 +1070,14 @@ endBehavior
 		oldIntStatus = SetInterruptsTo (DISABLED)
 		currentThread.isUserThread = false
 		oldIntStatus = SetInterruptsTo (oldIntStatus)
+
+		for i = 0 to MAX_FILES_PER_PROCESS-1
+			if currentThread.myProcess.fileDescriptor[i] != null
+				fileManager.Close(currentThread.myProcess.fileDescriptor[i])
+				currentThread.myProcess.fileDescriptor[i] = null
+			endIf
+		endFor
+
 		frameManager.ReturnAllFrames(&(currentThread.myProcess.addrSpace))
 		processManager.TurnIntoZombie(currentThread.myProcess)
 		currentThread.myProcess.myThread = null
@@ -1814,6 +1821,14 @@ endBehavior
 
 		oldInterruptStatus = SetInterruptsTo(ENABLED)
 
+		-- Open files in parent
+		for i = 0 to MAX_FILES_PER_PROCESS - 1
+			if currentThread.myProcess.fileDescriptor[i] != null
+				currentThread.myProcess.fileDescriptor[i].numberOfUsers = currentThread.myProcess.fileDescriptor[i].numberOfUsers + 1
+				newThread.myProcess.fileDescriptor[i] = currentThread.myProcess.fileDescriptor[i]
+			endIf		
+		endFor
+
 		newThread.stackTop = &(newThread.systemStack[SYSTEM_STACK_SIZE - 1]) 
 
 		frameManager.GetNewFrames(&(newPCB.addrSpace), currentThread.myProcess.addrSpace.numberOfPages)
@@ -1940,9 +1955,9 @@ endBehavior
 		junk = currentThread.myProcess.addrSpace.GetStringFromVirtual(&strBuffer, filename asInteger, MAX_STRING_SIZE)
 
 		-- Cannot handle file if filesize is too large
-		if filename arraySize > MAX_STRING_SIZE
-			return -1
-		endIf
+		-- if filename arraySize > MAX_STRING_SIZE
+		--	return -1
+		-- endIf
 
 		-- Locate empty slot in fileDescriptor array
 		fileDescriptorSlot = -1
@@ -2182,7 +2197,9 @@ endBehavior
 -----------------------------  Handle_Sys_Close  ---------------------------------
 
   function Handle_Sys_Close (fileDesc: int)
-		if ~(fileDesc < 0 || fileDesc > MAX_FILES_PER_PROCESS-1 || currentThread.myProcess.fileDescriptor[fileDesc] == null)
+		if fileDesc < 0 || fileDesc > MAX_FILES_PER_PROCESS-1 || currentThread.myProcess.fileDescriptor[fileDesc] == null
+			-- pass
+		else
 			fileManager.Close(currentThread.myProcess.fileDescriptor[fileDesc])
 			currentThread.myProcess.fileDescriptor[fileDesc] = null
 		endIf
